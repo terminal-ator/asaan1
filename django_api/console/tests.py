@@ -62,6 +62,24 @@ class ConsoleOrderFlowTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
 
+    def test_console_nav_has_account_menu(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("console-dashboard"))
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Clear cache", content)
+        self.assertIn(reverse("logout"), content)
+        self.assertIn("Log out", content)
+
+    def test_logout_ends_the_session(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("logout"))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith("/admin/login/"))
+        self.assertEqual(
+            self.client.get(reverse("console-dashboard")).status_code, 302
+        )
+
     def test_shop_form_requires_name_and_mobile(self):
         self.client.force_login(self.user)
         response = self.client.post(

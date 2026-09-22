@@ -2,3 +2,10 @@
 .keypad-backdrop{position:fixed;inset:0;background:#17221e75;z-index:10;display:flex;align-items:flex-end}.keypad{background:#fff;width:min(760px,100%);padding:16px 18px max(18px,env(safe-area-inset-bottom));border-radius:18px 18px 0 0;box-shadow:0 -8px 24px #17221e35}.keypad-title{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.keypad-title b{display:block;font-size:15px}.keypad-title small{display:block;color:#748078;font-size:12px;margin-top:4px}.keypad-title button{background:none;border:0;color:#56635b;font-size:26px;line-height:20px}.keypad-display{text-align:right;font-size:38px;font-weight:750;letter-spacing:-1px;padding:13px 3px 10px}.keypad-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.keypad-grid button{height:48px;border:0;border-radius:9px;background:#eef1ed;color:#17221e;font-size:21px;font-weight:650}.keypad-grid .keypad-clear{font-size:13px;color:#b2402b}.keypad-save{border:0;background:#176b51;color:#fff;border-radius:9px;width:100%;padding:14px;font-size:15px;font-weight:700;margin-top:12px}
 .registration .required-mark{color:#b2402b}
 .registration .form-error{margin:16px 0 0;padding:10px 12px;border-radius:9px;background:#fff0ed;color:#b2402b;font-size:13px;font-weight:650}
+.header-actions{display:flex;align-items:center;gap:4px}
+.menu{position:relative}
+.menu-button{font-size:22px;line-height:1;padding:0 8px}
+.menu-list{position:absolute;right:0;top:calc(100% + 8px);z-index:5;min-width:196px;padding:6px;display:grid;gap:2px;background:#fff;border:1px solid #e6ebe6;border-radius:11px;box-shadow:0 10px 26px #17221e26}
+.menu-list button{border:0;background:none;text-align:left;font:inherit;font-size:14px;font-weight:650;color:#17221e;padding:10px 11px;border-radius:7px}
+.menu-list button:hover{background:#f2f7f3}
+.menu-list .danger{color:#b2402b}

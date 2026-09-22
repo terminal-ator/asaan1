@@ -36,6 +36,13 @@ const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `$
 // A shop profile without a name or mobile is useless for billing, so treat it
 // as not set up and ask for the details again.
 const hasShopDetails = (shop: Shop | null): shop is Shop => Boolean(shop?.storeName?.trim() && shop?.mobile?.trim())
+// Used by the header menu: drop the offline copies and start clean.
+async function clearCacheAndReload() {
+  try {
+    if ('caches' in window) for (const key of await caches.keys()) await caches.delete(key)
+    if ('serviceWorker' in navigator) for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister()
+  } finally { window.location.reload() }
+}
 
 function App() {
   const [shop, setShop] = useState<Shop | null>(() => JSON.parse(localStorage.getItem('ordex-shop') || 'null'))
@@ -131,6 +138,17 @@ function App() {
     await sendOrder(order)
   }
 
+  async function logOut() {
+    const pending = await db.orders.where('status').equals('pending').count()
+    const warning = pending
+      ? `${pending} order${pending === 1 ? '' : 's'} on this device have not been submitted yet and will be deleted. Log out anyway?`
+      : 'Log out and remove this shop and its saved data from this device?'
+    if (!window.confirm(warning)) return
+    localStorage.removeItem('ordex-shop')
+    await Promise.all([db.products.clear(), db.cart.clear(), db.orders.clear()])
+    window.location.reload()
+  }
+
   async function repeatOrder(order: LocalOrder) {
     const productByID = new Map(products.map(product => [product.id, product]))
     const unavailable: string[] = []
@@ -164,7 +182,7 @@ function App() {
 
   if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('ordex-shop', JSON.stringify(saved)); setShop(saved) }} />
   return <main>
-    <header><div><strong>Ordex</strong><span>{shop.storeName}</span></div><button className="quiet" onClick={() => setScreen('orders')}>Orders</button></header>
+    <header><div><strong>Ordex</strong><span>{shop.storeName}</span></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
     {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} cart={cart} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'cart' && <Cart cart={cart} total={total} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} products={products} />}
@@ -204,6 +222,27 @@ function Registration({ initial, onSave }: { initial?: Shop | null; onSave: (sho
 }
 
 function Field({ label, value, onChange, required = false, maxLength, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number; type?: string }) { return <label>{label}{required && <span className="required-mark"> *</span>}<input type={type} value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }
+
+function Menu({ onLogout }: { onLogout: () => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => { if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
+  }, [open])
+  return <div className="menu" ref={ref}>
+    <button className="quiet menu-button" aria-label="More options" aria-expanded={open} onClick={() => setOpen(value => !value)}>⋮</button>
+    {open && <div className="menu-list" role="menu">
+      <button role="menuitem" onClick={() => window.location.reload()}>Refresh</button>
+      <button role="menuitem" onClick={() => void clearCacheAndReload()}>Clear cache &amp; reload</button>
+      <button role="menuitem" className="danger" onClick={onLogout}>Log out</button>
+    </div>}
+  </div>
+}
 
 function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: CartItem[]; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
   const parentRef = useRef<HTMLDivElement>(null)
