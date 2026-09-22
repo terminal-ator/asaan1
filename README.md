@@ -77,8 +77,8 @@ The PWA sends the catalogue product's UUID as `productId`. The API validates the
 
 The full strategy, first-time server setup, backup/restore drill and troubleshooting live in [`deploy/README.md`](deploy/README.md). The short version:
 
-1. Build the PWA and Django static files: `npm run build`, `python manage.py collectstatic --noinput`.
+1. Build the PWA on your machine and ship it: `deploy/ship.sh <user@host>` (the server never needs Node). Or build on the server with `npm run build` + `python manage.py collectstatic --noinput` if it can pull from git.
 2. Copy `deploy/asaan.env.example` to `/etc/asaan/asaan.env` and fill it in.
 3. Install `deploy/asaan.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/Caddyfile` (serves the PWA, `/static`, `/media` and proxies the API and console, with automatic TLS). On a box where 80/443 are already in use, use `deploy/nginx.conf` instead — see [`deploy/README.md`](deploy/README.md).
-4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-asaan.sh`. SQLite is the default; set `POSTGRES_DB` and friends in the env file to use PostgreSQL instead.
-5. Point an uptime check at `/healthz`.
+4. First run: `SKIP_DEPLOY=1 deploy/ship.sh <user@host>` then `ssh <user@host> "sudo SITE_HOST=asaan.in EMAIL=… SKIP_FRONTEND=1 sh /opt/asaan/deploy/bootstrap.sh"`. Updates afterwards are just `deploy/ship.sh <user@host>`.
+5. Back up nightly with `deploy/backup-asaan.sh`; point an uptime check at `/healthz`.

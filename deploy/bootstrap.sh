@@ -16,6 +16,11 @@
 #   APP_USER       asaan
 #   DATA_DIR       /var/lib/asaan
 #   GUNICORN_PORT  8123
+#   SKIP_FRONTEND  1 when dist/ was already built and shipped from the dev machine
+#
+# Without a git remote, ship the code first and the bootstrap will use it:
+#   SKIP_DEPLOY=1 deploy/ship.sh <user@host>
+#   ssh <user@host> "sudo SITE_HOST=asaan.in EMAIL=you@asan.in SKIP_FRONTEND=1 sh /opt/asaan/deploy/bootstrap.sh"
 #
 # It is safe to re-run: packages, user, directories and the env file are only
 # created when missing, and the last step is an ordinary deploy.
@@ -78,15 +83,23 @@ fi
 
 say "service account and directories"
 id -u "$APP_USER" >/dev/null 2>&1 || adduser --system --group --home "$APP_DIR" "$APP_USER"
+# Caddy (or any other proxy user) must be able to traverse into dist/ and media.
+chmod 755 "$APP_DIR"
 install -d -o "$APP_USER" -g "$APP_GROUP" "$DATA_DIR" "$DATA_DIR/media"
 install -d -o root -g "$APP_GROUP" -m 750 "$ENV_DIR"
 install -d /var/backups/asaan
 
 say "code"
 if [ -d "$APP_DIR/.git" ]; then
-  runuser -u "$APP_USER" -- git -C "$APP_DIR" pull --ff-only || true
+  if [ -n "$(git -C "$APP_DIR" remote 2>/dev/null || true)" ]; then
+    runuser -u "$APP_USER" -- git -C "$APP_DIR" pull --ff-only || true
+  else
+    echo "checkout has no git remote (shipped with deploy/ship.sh); using it as it is"
+  fi
+elif [ -f "$APP_DIR/django_api/manage.py" ]; then
+  echo "code is present without git history; using it as it is"
 else
-  [ -n "$REPO_URL" ] || die "$APP_DIR has no checkout; pass REPO_URL=..."
+  [ -n "$REPO_URL" ] || die "$APP_DIR has no checkout; pass REPO_URL=... or ship it with deploy/ship.sh SKIP_DEPLOY=1"
   runuser -u "$APP_USER" -- git clone "$REPO_URL" "$APP_DIR"
 fi
 
@@ -164,7 +177,8 @@ fi
 say "first deploy"
 systemctl daemon-reload
 systemctl enable asaan >/dev/null
-APP_DIR="$APP_DIR" APP_USER="$APP_USER" ENV_FILE="$ENV_FILE" sh "$APP_DIR/deploy/deploy.sh"
+APP_DIR="$APP_DIR" APP_USER="$APP_USER" ENV_FILE="$ENV_FILE" \
+  SKIP_FRONTEND="${SKIP_FRONTEND:-0}" sh "$APP_DIR/deploy/deploy.sh"
 
 say "https"
 systemctl enable caddy >/dev/null 2>&1 || true

@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
-# Deploy Asaan in place: pull, install, migrate, collect, build, reload, verify.
+# Deploy Asaan in place: install, migrate, collect, reload, verify.
 #
-#   deploy/deploy.sh                    # deploy the configured branch
+#   deploy/deploy.sh                    # git deploy: pull the configured branch
 #   TARGET=v1.2.0 deploy/deploy.sh      # deploy a tag (or an old commit) by hand
-#   SKIP_FRONTEND=1 deploy/deploy.sh    # when dist/ is shipped separately
+#   SKIP_FRONTEND=1 deploy/deploy.sh    # dist/ was built and shipped from the dev machine
+#
+# When the checkout has no git remote (an rsync deploy), the code is taken as it
+# is on disk and deploy/ship.sh drives this script from the dev machine.
 #
 # Run as root on the server, or as the asaan user if it owns the checkout.
 set -eu
@@ -21,20 +24,25 @@ GUNICORN_PORT="$(sed -n 's/^GUNICORN_PORT=//p' "$ENV_FILE" | tail -1)"
 [ -n "${GUNICORN_PORT:-}" ] || GUNICORN_PORT=8123
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${GUNICORN_PORT}/healthz}"
 
+die() { echo "error: $1" >&2; exit 1; }
 say() { printf '\n==> %s\n' "$1"; }
 as_user() {
   if [ "$(id -u)" = "0" ]; then runuser -u "$APP_USER" -- sh -c "$1"; else sh -c "$1"; fi
 }
+has_git_remote() {
+  [ -d "$APP_DIR/.git" ] && [ -n "$(git -C "$APP_DIR" remote 2>/dev/null || true)" ]
+}
 
 cd "$APP_DIR"
-PREVIOUS_REV="$(git rev-parse --short HEAD)"
-say "current revision $PREVIOUS_REV, deploying $TARGET"
+PREVIOUS_REV=""
+if [ -d .git ]; then PREVIOUS_REV="$(git rev-parse --short HEAD)"; fi
+say "current revision ${PREVIOUS_REV:-none (rsync deploy)}, deploying $TARGET"
 
 say "backing up the database before touching anything"
 if [ -x "$APP_DIR/deploy/backup-asaan.sh" ] || [ -f "$APP_DIR/deploy/backup-asaan.sh" ]; then
   ENV_FILE="$ENV_FILE" BACKUP_DIR="$BACKUP_DIR" \
     sh "$APP_DIR/deploy/backup-asaan.sh" \
-    || { echo "Pre-deploy backup failed; aborting so the database stays untouched." >&2; exit 1; }
+    || die "Pre-deploy backup failed; aborting so the database stays untouched."
 else
   DATABASE_PATH="$(sed -n 's/^DATABASE_PATH=//p' "$ENV_FILE" | tail -1)"
   [ -n "${DATABASE_PATH:-}" ] || DATABASE_PATH=/var/lib/asaan/asaan.db
@@ -44,9 +52,13 @@ else
   fi
 fi
 
-say "fetching $TARGET"
-as_user "git -C '$APP_DIR' fetch --all --tags --prune"
-as_user "git -C '$APP_DIR' checkout --force '$TARGET'"
+if has_git_remote; then
+  say "fetching $TARGET"
+  as_user "git -C '$APP_DIR' fetch --all --tags --prune"
+  as_user "git -C '$APP_DIR' checkout --force '$TARGET'"
+else
+  say "no git remote configured, using the code as it is on disk"
+fi
 
 say "installing python dependencies"
 as_user "'$PIP' install --quiet --upgrade pip"
@@ -61,6 +73,10 @@ as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py collectstatic --noinput
 if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
   say "building the PWA"
   as_user "cd '$APP_DIR' && npm ci --silent && npm run build"
+else
+  say "PWA is shipped prebuilt"
+  [ -f "$APP_DIR/dist/index.html" ] \
+    || die "SKIP_FRONTEND=1 but $APP_DIR/dist/index.html is missing; run deploy/ship.sh from the dev machine."
 fi
 
 say "reloading $SERVICE"
@@ -77,14 +93,18 @@ while [ "$attempt" -le 10 ]; do
   sleep 2
 done
 
-say "HEALTH CHECK FAILED, rolling back to $PREVIOUS_REV"
-as_user "git -C '$APP_DIR' checkout --force '$PREVIOUS_REV'"
-as_user "'$PIP' install --quiet -r '$APP_DIR/django_api/requirements.txt'"
-as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py collectstatic --noinput --clear"
-if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
-  as_user "cd '$APP_DIR' && npm ci --silent && npm run build"
+if [ -n "$PREVIOUS_REV" ]; then
+  say "HEALTH CHECK FAILED, rolling back to $PREVIOUS_REV"
+  as_user "git -C '$APP_DIR' checkout --force '$PREVIOUS_REV'"
+  as_user "'$PIP' install --quiet -r '$APP_DIR/django_api/requirements.txt'"
+  as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py collectstatic --noinput --clear"
+  if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
+    as_user "cd '$APP_DIR' && npm ci --silent && npm run build"
+  fi
+  systemctl reload "$SERVICE" || systemctl restart "$SERVICE"
+else
+  say "HEALTH CHECK FAILED (no git history to roll back to)"
 fi
-systemctl reload "$SERVICE" || systemctl restart "$SERVICE"
 
 cat >&2 <<'EOF'
 Code rolled back, but migrations are forward-only. If the failure was caused by

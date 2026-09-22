@@ -40,7 +40,7 @@ Keep `GUNICORN_PORT` in `/etc/asaan/asaan.env` and the upstream address in the `
 
 ## Assumptions and sizing
 
-- **Server**: 1–2 vCPU, 1–2 GB RAM, 20 GB SSD. Ubuntu 22.04/24.04 LTS.
+- **Server**: 1–2 vCPU, 1–2 GB RAM, 20 GB SSD. Ubuntu 22.04/24.04 LTS. One gigabyte is enough because the PWA is built on your machine (`deploy/ship.sh`), so Node never runs on the server.
 - **Traffic**: a handful of concurrent users; the PWA is served as static files, so Django only handles the catalogue, orders and the console.
 - **SQLite** is fine at this scale and is the simplest thing to back up. Move to Postgres only when you hit the triggers in *Scale path* below.
 - **One server, no staging** is the deliberate default. If you later want a staging box, run the same kit with a different `server_name`, `DATABASE_PATH` and a copy of the production database.
@@ -51,7 +51,8 @@ Keep `GUNICORN_PORT` in `/etc/asaan/asaan.env` and the upstream address in the `
 # as root
 adduser --system --group --home /opt/asaan asaan
 apt update && apt install -y sqlite3 git curl ca-certificates gnupg unzip
-# a recent Node LTS for building the PWA (or build it in CI and skip this)
+# a recent Node LTS, only needed if the server builds the PWA itself
+# (with deploy/ship.sh it is built on your machine and Node stays off the server)
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs
 # Caddy, from its official repository
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
@@ -132,33 +133,56 @@ POSTGRES_PORT=5432
 
 ## 2. First deploy
 
+With the bootstrap script (recommended — it does everything in section 1 for you):
+
+```sh
+# from the dev machine, if you are shipping rather than cloning
+SKIP_DEPLOY=1 deploy/ship.sh ubuntu@203.0.113.10
+ssh ubuntu@203.0.113.10 "sudo SITE_HOST=asaan.in EMAIL=you@asaan.in SKIP_FRONTEND=1 sh /opt/asaan/deploy/bootstrap.sh"
+```
+
+Or by hand, on the server:
+
 ```sh
 chmod +x /opt/asaan/deploy/*.sh
 /opt/asaan/deploy/deploy.sh
 ```
 
-It backs up the database, pulls the target revision, installs requirements, migrates, collects static, builds the PWA, reloads gunicorn (graceful HUP, so in-flight requests finish) and then polls `/healthz`. Anything short of 200 rolls the code back automatically.
+Either way the server deploy backs up the database, installs requirements, migrates, collects static, builds or accepts the shipped PWA, reloads gunicorn (graceful HUP, so in-flight requests finish) and then polls `/healthz`. Anything short of 200 triggers a rollback.
 
 ## 3. Routine deploys and rollback
 
-Tag releases so a rollback target always exists:
+There are two ways to get code onto the server. Pick one and stay with it.
+
+### Option A — build here, ship it (recommended for a small VPS)
+
+`deploy/ship.sh` runs `npm run build` on your machine, rsyncs the code, git history and freshly built `dist/` to the server, then runs the server-side deploy with `SKIP_FRONTEND=1`. The VPS never installs or runs Node, which is what makes a 1 GB instance comfortable.
+
+```sh
+deploy/ship.sh asaan@203.0.113.10                  # build, ship, deploy
+SSH_OPTS="-i ~/.ssh/asaan_deploy" deploy/ship.sh ubuntu@203.0.113.10
+DRY_RUN=1 deploy/ship.sh ubuntu@203.0.113.10       # show what would change
+SKIP_DEPLOY=1 deploy/ship.sh ubuntu@203.0.113.10   # first push, before bootstrap
+```
+
+Commit before shipping: a server-side rollback restores the last commit, so uncommitted changes are shipped but cannot be rolled back to. The script warns when the tree is dirty.
+
+### Option B — git checkout on the server
+
+If the server can pull from a repository (deploy key or read-only token), it can build the PWA itself:
 
 ```sh
 git tag -a v1.1.0 -m "scheme percentages, bulk sheets" && git push --tags
+ssh asaan@203.0.113.10 '/opt/asaan/deploy/deploy.sh'              # main
+ssh asaan@203.0.113.10 'TARGET=v1.1.0 /opt/asaan/deploy/deploy.sh' # a release
 ```
 
-Then, on the server:
+### Both paths
 
-```sh
-/opt/asaan/deploy/deploy.sh                 # deploy main
-TARGET=v1.1.0 /opt/asaan/deploy/deploy.sh   # deploy a specific release
-SKIP_FRONTEND=1 /opt/asaan/deploy/deploy.sh # when dist/ is shipped another way
-```
-
-- Deploys are **in place** from a git checkout, with `--force` so the server tree never blocks a pull. Never edit files on the server.
+- Deploys are **in place**; never edit files on the server.
 - **Graceful**: gunicorn reloads workers instead of dropping connections.
-- **Migrations are forward-only.** The script takes a database backup before running them, and says so if a rollback is needed. Schema changes should always be additive (add a column, backfill, drop later) so the previous code keeps working.
-- **Rollback**: redeploy the previous tag. The script also does this automatically when the health check fails.
+- **Migrations are forward-only.** The script takes a database backup before running them. Keep schema changes additive (add a column, backfill, drop later) so the previous code keeps working.
+- **Rollback**: the script does it automatically when the health check fails — to the previous commit on a git deploy, and by re-shipping on an rsync deploy (ship the previous commit's code with `SKIP_DEPLOY=0`). Restore the pre-deploy database backup if the schema was the problem.
 
 ## 4. Backups and restore
 
@@ -256,11 +280,11 @@ Move when you see it, not before:
 
 ## 9. Release checklist
 
-Before tagging:
+Before deploying:
 
 - [ ] `cd django_api && .venv/bin/python manage.py test` — all green.
-- [ ] `npm run build` — the PWA compiles.
 - [ ] `manage.py makemigrations --check --dry-run` — no missing migrations.
+- [ ] Commit everything (`git status` clean); `deploy/ship.sh` builds `dist/` for you.
 - [ ] Any new setting is in the env example and the deploy README.
 
 After deploying:
