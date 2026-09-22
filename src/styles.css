@@ -348,6 +348,10 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
   color: var(--body);
 }
 .total b { font-size: 21px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.margin-total { margin-top: 10px; background: var(--success-soft); }
+.margin-total span { color: var(--success); font-weight: 650; }
+.margin-total small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.margin-total b { color: var(--success); }
 .hint { font-size: 13px; color: var(--muted); line-height: 1.55; }
 .empty { font-size: 13.5px; color: var(--muted); padding: 28px 0; text-align: center; }
 
@@ -430,6 +434,21 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 .keypad-details > div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
 .keypad-details dt { color: var(--muted); }
 .keypad-details dd { margin: 0; min-width: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.keypad-margin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: var(--success-soft);
+}
+.keypad-margin > span:first-child { font-size: 12.5px; font-weight: 650; color: var(--success); }
+.keypad-margin small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.keypad-margin-value { display: grid; justify-items: end; }
+.keypad-margin-value strong { font-size: 17px; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; }
+.keypad-margin-value em { font-size: 11px; font-style: normal; color: var(--muted); }
 .keypad-display { text-align: right; font-size: 34px; font-weight: 800; letter-spacing: -1.5px; padding: 12px 4px 8px; font-variant-numeric: tabular-nums; }
 .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .keypad-grid button {

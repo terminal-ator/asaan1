@@ -179,6 +179,13 @@ function App() {
     return matches.filter(product => (!company || product.company === company) && (!brand || product.brand === brand))
   }, [products, query, company, brand, search])
   const total = cart.reduce((sum, item) => sum + item.quantity * item.rate, 0)
+  const marginTotal = useMemo(() => {
+    const byId = new Map(products.map(product => [product.id, product]))
+    return cart.reduce((sum, item) => {
+      const product = byId.get(item.id)
+      return product && product.mrp > item.rate ? sum + (product.mrp - item.rate) * item.quantity : sum
+    }, 0)
+  }, [cart, products])
   const newProducts = useMemo(() => [...products].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 8), [products])
 
   if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('ordex-shop', JSON.stringify(saved)); setShop(saved) }} />
@@ -186,7 +193,7 @@ function App() {
     <header><div className="header-brand"><span className="logo" aria-hidden="true">O</span><div><strong>Ordex</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
     {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} cart={cart} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
-    {screen === 'cart' && <Cart cart={cart} total={total} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
+    {screen === 'cart' && <Cart cart={cart} total={total} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'orders' && <Orders onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
   </main>
@@ -312,6 +319,9 @@ function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { valu
 function Keypad({ product, value, pressKey, onClose, onSave }: { product: Product; value: string; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
   const scheme = Number(product.schemePercent) || 0
   const image = imageSource(product)
+  const unitMargin = Math.max(0, product.mrp - product.rate)
+  const marginPercent = product.mrp > 0 ? (unitMargin / product.mrp) * 100 : 0
+  const quantity = Number(value) || 0
   const details = [
     ['Brand', product.brand],
     ['Category', product.category],
@@ -343,6 +353,14 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
         {details.map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}
       </dl>
 
+      {unitMargin > 0 && <div className="keypad-margin">
+        <span>Retail margin<small>{marginPercent.toFixed(1)}% of MRP</small></span>
+        <span className="keypad-margin-value">
+          <strong>{money(quantity > 0 ? unitMargin * quantity : unitMargin)}</strong>
+          <em>{quantity > 0 ? `on ${quantity} ${product.unit}` : 'per unit'}</em>
+        </span>
+      </div>}
+
       <div className="keypad-display">{value || '0'}</div>
       <div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div>
       <button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button>
@@ -350,9 +368,9 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
   </div>
 }
 
-function Cart({ cart, total, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
+function Cart({ cart, total, margin, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; margin: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
   const clear = () => { if (window.confirm('Clear all items from this cart?')) onClear() }
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.unit}`}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></div><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /><strong>{money(item.quantity * item.rate)}</strong></article>)}<div className="total"><span>Tentative total</span><b>{money(total)}</b></div><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.unit}`}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></div><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /><strong>{money(item.quantity * item.rate)}</strong></article>)}<div className="total"><span>Tentative total</span><b>{money(total)}</b></div>{margin > 0 && <div className="total margin-total"><span>Your retail margin<small>If sold at MRP</small></span><b>{money(margin)}</b></div>}<p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
 }
 
 function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void> }) {

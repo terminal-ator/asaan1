@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -295,6 +296,17 @@ class Product(models.Model):
 
     def __str__(self):
         return self.simple_name or self.name
+
+    @property
+    def retail_margin(self):
+        """What the shop makes per unit when it sells at MRP."""
+        return max(0, self.mrp - self.rate)
+
+    @property
+    def retail_margin_percent(self):
+        if not self.mrp:
+            return Decimal("0")
+        return round(Decimal(self.retail_margin) / Decimal(self.mrp) * 100, 1)
 
 
 class Order(models.Model):

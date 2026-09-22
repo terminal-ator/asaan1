@@ -1,5 +1,6 @@
 import json
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -143,3 +144,27 @@ class AdminProductImportTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Product.objects.filter(sku="ADM-2").exists())
+
+
+class ProductMarginTests(TestCase):
+    def setUp(self):
+        self.product = Product.objects.create(
+            sku="M-1",
+            name="Margin item",
+            company=Company.objects.create(name="Margin Co"),
+            brand=Brand.objects.create(name="Margin Brand"),
+            category=Category.objects.create(name="Margin Cat"),
+            packing="Box",
+            unit="box",
+            rate=8000,
+            mrp=10000,
+        )
+
+    def test_retail_margin_per_unit_and_percent_of_mrp(self):
+        self.assertEqual(self.product.retail_margin, 2000)
+        self.assertEqual(self.product.retail_margin_percent, Decimal("20.0"))
+
+    def test_no_margin_when_mrp_does_not_exceed_the_rate(self):
+        self.product.mrp = 7000
+        self.assertEqual(self.product.retail_margin, 0)
+        self.assertEqual(self.product.retail_margin_percent, Decimal("0.0"))
