@@ -79,6 +79,6 @@ The full strategy, first-time server setup, backup/restore drill and troubleshoo
 
 1. Build the PWA and Django static files: `npm run build`, `python manage.py collectstatic --noinput`.
 2. Copy `deploy/ordex.env.example` to `/etc/ordex/ordex.env` and fill it in.
-3. Install `deploy/ordex.service` (gunicorn on `127.0.0.1:8081`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console).
+3. Install `deploy/ordex.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console) — see [`deploy/README.md`](deploy/README.md).
 4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-ordex.sh`.
 5. Point an uptime check at `/healthz`.

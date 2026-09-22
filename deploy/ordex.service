@@ -8,7 +8,7 @@ Group=ordex
 WorkingDirectory=/opt/ordex/django_api
 EnvironmentFile=/etc/ordex/ordex.env
 ExecStart=/opt/ordex/django_api/.venv/bin/gunicorn ordex.wsgi:application \
-    --bind 127.0.0.1:8081 \
+    --bind 127.0.0.1:${GUNICORN_PORT} \
     --workers 2 \
     --timeout 60 \
     --access-logfile - \

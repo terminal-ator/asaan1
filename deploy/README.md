@@ -11,7 +11,7 @@ One small server runs everything: nginx terminates TLS and serves the built PWA,
                     │               ├── /media/          → /var/lib/ordex/media         │
                     │               └── /api /console /admin /healthz                   │
                     │                       │                                          │
-                    │               gunicorn :8081 (2 workers) ── Django              │
+                    │               gunicorn :8123 (2 workers) ── Django              │
                     │                       │                                          │
                     │              /var/lib/ordex/ordex.db (SQLite, WAL)                │
                     └──────────────────────────────────────────────────────────────────┘
@@ -26,6 +26,17 @@ One small server runs everything: nginx terminates TLS and serves the built PWA,
 | Photos | `/var/lib/ordex/media` | `MEDIA_ROOT`; phone uploads |
 | Secrets | `/etc/ordex/ordex.env` | `root:ordex`, mode `640` |
 | Backups | `/var/backups/ordex` | plus offsite copy |
+
+### Ports
+
+| Port | Use | Exposed publicly? |
+|---|---|---|
+| `8123` | gunicorn (internal) | no — bound to `127.0.0.1` |
+| `443` | nginx, TLS, when you have a hostname | yes |
+| `80` | nginx, ACME challenge and redirect | yes (needed for Let's Encrypt) |
+| `9123` | optional public HTTPS port if `443` is already taken by another service | yes, via the firewall |
+
+Keep `GUNICORN_PORT` in `/etc/ordex/ordex.env` and the `proxy_pass` values in `nginx.conf` identical; nothing else needs the internal port.
 
 ## Assumptions and sizing
 
@@ -162,7 +173,35 @@ A backup you have never restored is not a backup. Also copy the env file somewhe
 - [ ] Optional: restrict `/admin/` to the office IP in nginx (`allow 203.0.113.4; deny all;` inside the location).
 - [ ] Django admin and console accounts: one per person, so a departure is a deactivation, not a shared-password change.
 
-## 7. Scale path
+## 7. Shared server (Lightsail and friends)
+
+Ordex is happy to share a box with other services as long as ports and the reverse proxy do not collide.
+
+**Recon first:**
+
+```sh
+ss -ltnp                        # what is listening, and on which ports
+systemctl is-active nginx apache2 caddy
+df -h && free -h                # room for SQLite, photos and a node build
+```
+
+Then choose the shape:
+
+- **nginx already owns 80/443** (the usual case): add Ordex as another `server_name` vhost. Nothing new is exposed, other services are untouched, and `certbot --nginx` issues the certificate. Preferred.
+- **separate public port**: after getting a certificate, change `listen 80;` to `listen 9123 ssl;` in the Ordex server block. Open 9123 in the Lightsail console and in `ufw` if enabled.
+- **no hostname yet**: `https://203-0-113-10.sslip.io` resolves to your IP automatically, so `certbot --nginx -d 203-0-113-10.sslip.io` can issue a real certificate. The PWA can then install and work offline.
+- **no TLS at all yet**: treat plain HTTP as a temporary test — the PWA's install and offline features require HTTPS. For the console, do not expose it; tunnel instead: `ssh -L 8123:127.0.0.1:8123 ubuntu@<ip>` then browse `http://localhost:8123/console/`.
+
+**Lightsail firewall** (separate from `ufw`): Console → instance → *Networking* → *IPv4 Firewall* → *Add rule*. Allow `HTTPS 443` and `HTTP 80` for Let's Encrypt, or your custom TCP port `9123`. Your SSH rule is already there. Attach a **static IP** so the address survives a reboot, and turn on automatic **instance snapshots** as a second line of defence behind the nightly backups.
+
+**Coexistence notes:**
+
+- Only one process can bind a port — check `ss -ltnp | grep 8123` before starting.
+- nginx routes virtual hosts by `server_name`, so adding one does not disturb the others.
+- Memory: two gunicorn workers plus SQLite sit around 150–250 MB. On a 512 MB instance add 1 GB of swap, or set `--workers 1`.
+- If another web server (Apache, Caddy) owns 80/443, either put Ordex behind it as a plain HTTP upstream on 8123, or use the custom-port route.
+
+## 8. Scale path
 
 Move when you see it, not before:
 
@@ -174,7 +213,7 @@ Move when you see it, not before:
 | Deploys feel risky | add CI that runs `manage.py test` + `npm run build` and only tags on green; add a staging box |
 | Console Tailwind/Alpine CDNs blocked | self-host both and drop the CDN `<script>` tags |
 
-## 8. Release checklist
+## 9. Release checklist
 
 Before tagging:
 
@@ -190,7 +229,7 @@ After deploying:
 - [ ] Check `journalctl -u ordex -n 50` for errors.
 - [ ] Confirm the nightly backup file appears in `/var/backups/ordex`.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Check |
 |---|---|

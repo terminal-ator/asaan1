@@ -14,10 +14,12 @@ ENV_FILE="${ENV_FILE:-/etc/ordex/ordex.env}"
 BRANCH="${BRANCH:-main}"
 TARGET="${TARGET:-$BRANCH}"
 SERVICE="${SERVICE:-ordex}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8081/healthz}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/ordex}"
 PYTHON="$APP_DIR/django_api/.venv/bin/python"
 PIP="$APP_DIR/django_api/.venv/bin/pip"
+GUNICORN_PORT="$(sed -n 's/^GUNICORN_PORT=//p' "$ENV_FILE" | tail -1)"
+[ -n "${GUNICORN_PORT:-}" ] || GUNICORN_PORT=8123
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${GUNICORN_PORT}/healthz}"
 
 say() { printf '\n==> %s\n' "$1"; }
 as_user() {
