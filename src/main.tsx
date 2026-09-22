@@ -18,6 +18,7 @@ const apiURL = import.meta.env.VITE_API_URL ?? ''
 
 type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; mrp: number; imageUrl?: string; updatedAt: string; createdAt: string }
 type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number }
+type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string }
 type Shop = { storeName: string; customerName: string; mobile: string; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
 type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string }
 
@@ -81,19 +82,19 @@ function App() {
     await db.cart.put({ id: 'current', items: next })
   }
 
-  function changeQuantity(product: Product, delta: number) {
-    const found = cart.find(item => item.id === product.id && item.unit === product.unit)
-    setQuantity(product, (found?.quantity ?? 0) + delta)
+  function changeQuantity(target: QuantityTarget, delta: number) {
+    const found = cart.find(item => item.id === target.id && item.unit === target.unit)
+    setQuantity(target, (found?.quantity ?? 0) + delta)
   }
 
-  function setQuantity(product: Product, quantity: number) {
+  function setQuantity(target: QuantityTarget, quantity: number) {
     quantity = Number.isFinite(quantity) ? Math.max(0, Math.floor(quantity)) : 0
-    const found = cart.find(item => item.id === product.id && item.unit === product.unit)
+    const found = cart.find(item => item.id === target.id && item.unit === target.unit)
     const next = quantity <= 0
-      ? cart.filter(item => !(item.id === product.id && item.unit === product.unit))
+      ? cart.filter(item => !(item.id === target.id && item.unit === target.unit))
       : found
         ? cart.map(item => item === found ? { ...item, quantity } : item)
-        : [...cart, { id: product.id, sku: product.sku, name: product.simpleName || product.name, unit: product.unit, rate: product.rate, quantity }]
+        : [...cart, { id: target.id, sku: target.sku, name: target.simpleName || target.name, unit: target.unit, rate: target.rate, quantity }]
     void saveCart(next)
   }
 
@@ -185,7 +186,7 @@ function App() {
     <header><div className="header-brand"><span className="logo" aria-hidden="true">O</span><div><strong>Ordex</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
     {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} cart={cart} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
-    {screen === 'cart' && <Cart cart={cart} total={total} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} products={products} />}
+    {screen === 'cart' && <Cart cart={cart} total={total} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'orders' && <Orders onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
   </main>
@@ -263,15 +264,54 @@ function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: C
   return <><section className="controls"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></section>{showNewProducts && <section className="new-products"><div><b>New products</b><small>Recently added to the catalogue</small></div><div className="new-product-row">{props.newProducts.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(product.rate)}</small></button>)}</div></section>}<div className="count">{props.products.length} products · Tap a product to enter quantity</div><div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}>{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<div className="product-info"><b>{product.simpleName || product.name}</b><small>{product.packing} · {product.company}</small><strong>{money(product.rate)} <em>/{product.unit}</em></strong></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
 }
 
-function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { value: number; decrement: () => void; increment: () => void; onInput: (value: number) => void; onOpenKeypad?: () => void }) { return <div className="quantity" onClick={event => event.stopPropagation()}><button aria-label="Reduce quantity" onClick={decrement}>−</button><input aria-label="Quantity" type="number" min="0" inputMode="numeric" readOnly={Boolean(onOpenKeypad)} value={value || ''} placeholder="0" onClick={() => onOpenKeypad?.()} onChange={event => onInput(Number(event.target.value))} /><button aria-label="Increase quantity" onClick={increment}>+</button></div> }
+function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { value: number; decrement: () => void; increment: () => void; onInput: (value: number) => void; onOpenKeypad?: () => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const bump = (action: () => void) => { setDraft(null); action() }
+  const commit = (raw: string) => {
+    const parsed = Math.floor(Number(raw))
+    if (Number.isFinite(parsed)) onInput(Math.max(0, parsed))
+  }
+  return <div className="quantity" onClick={event => event.stopPropagation()}>
+    <button aria-label="Reduce quantity" onClick={() => bump(decrement)}>−</button>
+    <input
+      aria-label="Quantity"
+      type="number"
+      min="0"
+      step="1"
+      inputMode="numeric"
+      readOnly={Boolean(onOpenKeypad)}
+      value={onOpenKeypad ? (value || '') : (draft ?? (value || ''))}
+      placeholder="0"
+      onClick={() => onOpenKeypad?.()}
+      onWheel={event => event.currentTarget.blur()}
+      onChange={event => {
+        if (onOpenKeypad) return
+        const raw = event.target.value
+        setDraft(raw)
+        // Committing an empty or zero draft would delete the line while the
+        // customer is still typing; those wait for blur below.
+        if (raw === '' || Number(raw) === 0) return
+        commit(raw)
+      }}
+      onBlur={() => {
+        if (draft === null) return
+        const raw = draft
+        setDraft(null)
+        // Clearing the field keeps the previous quantity; an explicit 0 removes.
+        if (raw.trim() !== '') commit(raw)
+      }}
+    />
+    <button aria-label="Increase quantity" onClick={() => bump(increment)}>+</button>
+  </div>
+}
 
 function Keypad({ product, value, pressKey, onClose, onSave }: { product: Product; value: string; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
   return <div className="keypad-backdrop" onClick={onClose}><section className="keypad" onClick={event => event.stopPropagation()}><div className="keypad-title"><div><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(product.rate)} / {product.unit}</small></div><button onClick={onClose} aria-label="Close keypad">×</button></div><div className="keypad-display">{value || '0'}</div><div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div><button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button></section></div>
 }
 
-function Cart({ cart, total, onBack, onSubmit, onClear, changeQuantity, setQuantity, products }: { cart: CartItem[]; total: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void; products: Product[] }) {
+function Cart({ cart, total, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
   const clear = () => { if (window.confirm('Clear all items from this cart?')) onClear() }
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <>{cart.map(item => { const p = products.find(product => product.id === item.id); return <article className="cart-line" key={item.id}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => { if (p) setQuantity(p, 0) }}>Remove</button></div><Quantity value={item.quantity} decrement={() => { if (p) changeQuantity(p, -1) }} increment={() => { if (p) changeQuantity(p, 1) }} onInput={value => { if (p) setQuantity(p, value) }} /><strong>{money(item.quantity * item.rate)}</strong></article> })}<div className="total"><span>Tentative total</span><b>{money(total)}</b></div><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.unit}`}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></div><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /><strong>{money(item.quantity * item.rate)}</strong></article>)}<div className="total"><span>Tentative total</span><b>{money(total)}</b></div><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
 }
 
 function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void> }) {
