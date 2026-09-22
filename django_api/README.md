@@ -18,7 +18,7 @@ Admin: `/admin/` · Console: `/console/` · API: `/api/catalogue`, `/api/orders`
 
 Bills are raised by hand in Marg ERP. The console prepares printable order slips and line-item CSV exports; it does not assign invoice numbers or post dispatch stock. `invoice_detail`, `invoice_json`, `invoice_excel`, and `einvoice_upload` are kept for the future auto-billing phase but are not linked from the console.
 
-The Product admin includes an **Import CSV** action. Existing SKUs are updated and new SKUs are created. The Order admin supports `Received`, `Processing`, `Completed`, and `Cancelled` states, with filters and inline order items.
+The Product admin includes an **Import CSV** action. Existing SKUs are updated and new SKUs are created. It accepts the same columns as the console importer, including `gst_rate`, `scheme_percent` and `hsn_code`. The Order admin supports `Received`, `Processing`, `Completed`, and `Cancelled` states, with filters and inline order items.
 
 ## Tests
 

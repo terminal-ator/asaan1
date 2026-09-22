@@ -1,4 +1,6 @@
 import csv
+from decimal import Decimal, InvalidOperation
+
 from django.contrib import admin, messages
 from django.db import transaction
 from django.http import HttpResponseRedirect
@@ -45,20 +47,58 @@ class ProductAdmin(admin.ModelAdmin):
     def import_csv(self, request):
         if request.method == 'POST':
             upload = request.FILES.get('file')
-            if not upload: messages.error(request, 'Choose a CSV file.'); return HttpResponseRedirect('../import-csv/')
+            if not upload:
+                messages.error(request, 'Choose a CSV file.')
+                return HttpResponseRedirect('../import-csv/')
             try:
                 rows = csv.DictReader((line.decode('utf-8-sig') for line in upload.file))
-                required = {'sku','name','company','brand','category','packing','unit','sale_rate','mrp'}
-                if not required.issubset(set(rows.fieldnames or [])): raise ValueError('CSV is missing a required column.')
+                required = {'sku', 'name', 'company', 'brand', 'category', 'packing', 'unit', 'sale_rate', 'mrp'}
+                if not required.issubset(set(rows.fieldnames or [])):
+                    raise ValueError('CSV is missing a required column.')
                 count = 0
                 with transaction.atomic():
                     for row in rows:
-                        Product.objects.update_or_create(sku=row['sku'].strip(), defaults={'name':row['name'].strip(),'simple_name':row.get('simple_name','').strip(),'company':Company.objects.get_or_create(name=row['company'].strip())[0],'brand':Brand.objects.get_or_create(name=row['brand'].strip())[0],'category':Category.objects.get_or_create(name=row['category'].strip())[0],'packing':row['packing'].strip(),'unit':row['unit'].strip(),'rate':round(float(row['sale_rate'])*100),'mrp':round(float(row['mrp'])*100),'image_url':row.get('image_url','').strip(),'active':row.get('active','true').lower() != 'false'})
+                        sku = (row.get('sku') or '').strip()
+                        rate = self._decimal(row, 'sale_rate') * 100
+                        mrp = self._decimal(row, 'mrp') * 100
+                        gst_rate = self._decimal(row, 'gst_rate')
+                        scheme_percent = self._decimal(row, 'scheme_percent')
+                        if rate < 0 or mrp < 0 or gst_rate < 0 or gst_rate > 100:
+                            raise ValueError(f'Row {sku}: prices must be positive and GST must be between 0 and 100.')
+                        if scheme_percent < 0 or scheme_percent > 100:
+                            raise ValueError(f'Row {sku}: scheme_percent must be between 0 and 100.')
+                        Product.objects.update_or_create(
+                            sku=sku,
+                            defaults={
+                                'name': row['name'].strip(),
+                                'simple_name': (row.get('simple_name') or '').strip(),
+                                'company': Company.objects.get_or_create(name=row['company'].strip())[0],
+                                'brand': Brand.objects.get_or_create(name=row['brand'].strip())[0],
+                                'category': Category.objects.get_or_create(name=row['category'].strip())[0],
+                                'packing': row['packing'].strip(),
+                                'unit': row['unit'].strip(),
+                                'rate': round(rate),
+                                'mrp': round(mrp),
+                                'gst_rate': gst_rate,
+                                'scheme_percent': scheme_percent,
+                                'hsn_code': (row.get('hsn_code') or '').strip(),
+                                'image_url': (row.get('image_url') or '').strip(),
+                                'active': (row.get('active') or 'true').lower() != 'false',
+                            },
+                        )
                         count += 1
                 messages.success(request, f'{count} products imported or updated.')
-            except Exception as exc: messages.error(request, f'Import failed: {exc}')
+            except Exception as exc:
+                messages.error(request, f'Import failed: {exc}')
             return HttpResponseRedirect('../')
         return TemplateResponse(request, 'admin/catalogue/product_import.html', {'title':'Import products', 'opts':self.model._meta, 'has_view_permission':True})
+
+    @staticmethod
+    def _decimal(row, key):
+        try:
+            return Decimal(row.get(key) or '0')
+        except (InvalidOperation, TypeError):
+            raise ValueError(f"Row {row.get('sku') or '?'}: {key} must be a number.")
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}; extra_context['import_url'] = 'import-csv/'

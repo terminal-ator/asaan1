@@ -1,6 +1,8 @@
 import json
 import uuid
 
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from .models import Brand, Category, Company, Order, OrderItem, Product
@@ -109,3 +111,35 @@ class OrderApiTests(TestCase):
             )
             self.assertEqual(response.status_code, 400)
         self.assertEqual(Order.objects.count(), 0)
+
+
+class AdminProductImportTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="admin", password="secret", email="admin@example.com"
+        )
+        self.client.force_login(self.user)
+
+    def import_csv(self, body):
+        upload = SimpleUploadedFile("items.csv", body.encode(), content_type="text/csv")
+        return self.client.post("/admin/catalogue/product/import-csv/", {"file": upload})
+
+    def test_import_reads_scheme_gst_and_hsn(self):
+        response = self.import_csv(
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,gst_rate,scheme_percent,hsn_code\n"
+            "ADM-1,Admin item,Co,Brand,Cat,Box of 12,box,10.00,12.00,18,7.5,3402\n"
+        )
+        self.assertEqual(response.status_code, 302)
+        product = Product.objects.get(sku="ADM-1")
+        self.assertEqual(product.rate, 1000)
+        self.assertEqual(str(product.gst_rate), "18.00")
+        self.assertEqual(str(product.scheme_percent), "7.50")
+        self.assertEqual(product.hsn_code, "3402")
+
+    def test_import_rejects_a_scheme_above_100(self):
+        response = self.import_csv(
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,scheme_percent\n"
+            "ADM-2,Bad scheme,Co,Brand,Cat,Box,box,10.00,12.00,150\n"
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Product.objects.filter(sku="ADM-2").exists())
