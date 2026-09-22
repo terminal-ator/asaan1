@@ -16,7 +16,7 @@ import './product-images.css'
 // developing, and in production nginx serves the built PWA next to Django.
 const apiURL = import.meta.env.VITE_API_URL ?? ''
 
-type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; mrp: number; schemePercent?: string; imageUrl?: string; updatedAt: string; createdAt: string }
+type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; mrp: number; schemePercent?: string; gstRate?: string; hsnCode?: string; imageUrl?: string; updatedAt: string; createdAt: string }
 type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number }
 type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string }
 type Shop = { storeName: string; customerName: string; mobile: string; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
@@ -310,7 +310,44 @@ function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { valu
 }
 
 function Keypad({ product, value, pressKey, onClose, onSave }: { product: Product; value: string; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
-  return <div className="keypad-backdrop" onClick={onClose}><section className="keypad" onClick={event => event.stopPropagation()}><div className="keypad-title"><div><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(product.rate)} / {product.unit}{Number(product.schemePercent) > 0 ? ` · ${Number(product.schemePercent)}% scheme` : ''}</small></div><button onClick={onClose} aria-label="Close keypad">×</button></div><div className="keypad-display">{value || '0'}</div><div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div><button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button></section></div>
+  const scheme = Number(product.schemePercent) || 0
+  const image = imageSource(product)
+  const details = [
+    ['Brand', product.brand],
+    ['Category', product.category],
+    ['SKU', product.sku],
+    ['Unit', product.unit],
+    ...(Number(product.gstRate) > 0 ? [['GST', `${Number(product.gstRate)}%`]] : []),
+  ]
+  return <div className="keypad-backdrop" onClick={onClose}>
+    <section className="keypad" onClick={event => event.stopPropagation()}>
+      <div className="keypad-title">
+        <div className="keypad-product">
+          {image
+            ? <img className="keypad-image" src={image} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} />
+            : <span className="keypad-image placeholder" aria-hidden="true">▦</span>}
+          <div className="keypad-heading">
+            <b>{product.simpleName || product.name}</b>
+            <small>{product.packing} · {product.company}</small>
+            <div className="keypad-price">
+              <strong>{money(product.rate)} <em>/{product.unit}</em></strong>
+              {product.mrp > product.rate && <s>{money(product.mrp)}</s>}
+              {scheme > 0 && <span className="scheme-chip">{scheme}% scheme</span>}
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} aria-label="Close keypad">×</button>
+      </div>
+
+      <dl className="keypad-details">
+        {details.map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}
+      </dl>
+
+      <div className="keypad-display">{value || '0'}</div>
+      <div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div>
+      <button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button>
+    </section>
+  </div>
 }
 
 function Cart({ cart, total, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
