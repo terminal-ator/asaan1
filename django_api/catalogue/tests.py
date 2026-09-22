@@ -80,3 +80,17 @@ class OrderApiTests(TestCase):
         self.assertEqual(order.customer_gstin, "27abcde1234f1z5")
         self.assertEqual(order.place_of_supply, "Maharashtra")
         self.assertEqual(order.shop_record.gstin, "27abcde1234f1z5")
+
+    def test_shop_name_and_mobile_are_required(self):
+        for shop in (
+            {"storeName": "   ", "mobile": "9999999999"},
+            {"storeName": "Test shop", "mobile": "   "},
+            {"storeName": "", "mobile": "9999999999"},
+            {"storeName": "Test shop", "mobile": ""},
+        ):
+            payload = {**self.payload(), "shop": shop}
+            response = self.client.post(
+                "/api/orders", data=json.dumps(payload), content_type="application/json"
+            )
+            self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)

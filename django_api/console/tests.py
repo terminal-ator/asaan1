@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from catalogue.models import Brand, Category, Company, Order, OrderItem, Product
+from catalogue.models import Brand, Category, Company, Order, OrderItem, Product, Shop
 
 
 class ConsoleOrderFlowTests(TestCase):
@@ -60,6 +60,16 @@ class ConsoleOrderFlowTests(TestCase):
             reverse("console-order-slip", args=[self.order.id])
         )
         self.assertEqual(response.status_code, 302)
+
+    def test_shop_form_requires_name_and_mobile(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-shop-new"),
+            {"store_name": "   ", "mobile": "", "active": "on"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required")
+        self.assertFalse(Shop.objects.exists())
 
     def test_order_slip_shows_rupees_without_invoice_number(self):
         self.client.force_login(self.user)

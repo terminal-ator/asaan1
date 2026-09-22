@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import Dexie, { type EntityTable } from 'dexie'
@@ -33,6 +33,9 @@ class OrdexDB extends Dexie {
 const db = new OrdexDB()
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(paise / 100)
 const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `${apiURL}${product.imageUrl}` : product.imageUrl
+// A shop profile without a name or mobile is useless for billing, so treat it
+// as not set up and ask for the details again.
+const hasShopDetails = (shop: Shop | null): shop is Shop => Boolean(shop?.storeName?.trim() && shop?.mobile?.trim())
 
 function App() {
   const [shop, setShop] = useState<Shop | null>(() => JSON.parse(localStorage.getItem('ordex-shop') || 'null'))
@@ -120,7 +123,7 @@ function App() {
   }
 
   async function placeOrder() {
-    if (!shop || cart.length === 0) return
+    if (!hasShopDetails(shop) || cart.length === 0) return
     const order: LocalOrder = { clientOrderId: crypto.randomUUID(), shop, items: cart, notes: '', total, createdAt: new Date().toISOString(), status: 'pending' }
     await db.orders.put(order)
     await saveCart([])
@@ -159,7 +162,7 @@ function App() {
   const total = cart.reduce((sum, item) => sum + item.quantity * item.rate, 0)
   const newProducts = useMemo(() => [...products].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 8), [products])
 
-  if (!shop) return <Registration onSave={saved => { localStorage.setItem('ordex-shop', JSON.stringify(saved)); setShop(saved) }} />
+  if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('ordex-shop', JSON.stringify(saved)); setShop(saved) }} />
   return <main>
     <header><div><strong>Ordex</strong><span>{shop.storeName}</span></div><button className="quiet" onClick={() => setScreen('orders')}>Orders</button></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
@@ -170,9 +173,10 @@ function App() {
   </main>
 }
 
-function Registration({ onSave }: { onSave: (shop: Shop) => void }) {
-  const [shop, setShop] = useState<Shop>({ storeName: '', customerName: '', mobile: '', address: '' })
+function Registration({ initial, onSave }: { initial?: Shop | null; onSave: (shop: Shop) => void }) {
+  const [shop, setShop] = useState<Shop>(initial ?? { storeName: '', customerName: '', mobile: '', address: '' })
   const [locationState, setLocationState] = useState<'idle' | 'loading' | 'saved' | 'error'>('idle')
+  const [error, setError] = useState('')
   const shareLocation = () => {
     if (!navigator.geolocation) { setLocationState('error'); return }
     setLocationState('loading')
@@ -181,10 +185,25 @@ function Registration({ onSave }: { onSave: (shop: Shop) => void }) {
       setLocationState('saved')
     }, () => setLocationState('error'), { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 })
   }
-  return <main className="registration"><div className="brand">Ordex</div><h1>Set up your shop</h1><p>Save your details on this device to make future orders quick. They are included only when you submit an order.</p><form onSubmit={event => { event.preventDefault(); onSave(shop) }}><Field label="Store name" value={shop.storeName} onChange={value => setShop({ ...shop, storeName: value })} required /><Field label="Contact name" value={shop.customerName} onChange={value => setShop({ ...shop, customerName: value })} /><Field label="Mobile number" value={shop.mobile} onChange={value => setShop({ ...shop, mobile: value })} required /><Field label="GSTIN (optional)" value={shop.gstin ?? ''} onChange={value => setShop({ ...shop, gstin: value.toUpperCase().replace(/[^0-9A-Z]/g, '') })} maxLength={15} /><Field label="Address" value={shop.address ?? ''} onChange={value => setShop({ ...shop, address: value })} /><section className="location-card"><div><b>Shop location <small>Optional</small></b><p>{locationState === 'saved' ? `Location saved (accurate to about ${shop.locationAccuracy} m)` : locationState === 'error' ? 'Location could not be shared. You can continue without it.' : 'Share your current location to help with delivery.'}</p></div><button type="button" className="location-button" onClick={shareLocation} disabled={locationState === 'loading'}>{locationState === 'loading' ? 'Finding…' : locationState === 'saved' ? 'Update' : 'Share location'}</button></section><button className="primary">Open catalogue</button></form></main>
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    const storeName = shop.storeName.trim()
+    const mobile = shop.mobile.trim()
+    if (!storeName || !mobile) {
+      setError('Store name and mobile number are required.')
+      return
+    }
+    setError('')
+    onSave({ ...shop, storeName, mobile, customerName: shop.customerName?.trim(), address: shop.address?.trim() })
+  }
+  const update = (changes: Partial<Shop>) => {
+    setShop(current => ({ ...current, ...changes }))
+    if (error) setError('')
+  }
+  return <main className="registration"><div className="brand">Ordex</div><h1>Set up your shop</h1><p>Save your details on this device to make future orders quick. They are included only when you submit an order.</p><form onSubmit={submit}><Field label="Store name" value={shop.storeName} onChange={value => update({ storeName: value })} required /><Field label="Contact name" value={shop.customerName ?? ''} onChange={value => update({ customerName: value })} /><Field label="Mobile number" type="tel" value={shop.mobile} onChange={value => update({ mobile: value })} required /><Field label="GSTIN (optional)" value={shop.gstin ?? ''} onChange={value => update({ gstin: value.toUpperCase().replace(/[^0-9A-Z]/g, '') })} maxLength={15} /><Field label="Address" value={shop.address ?? ''} onChange={value => update({ address: value })} /><section className="location-card"><div><b>Shop location <small>Optional</small></b><p>{locationState === 'saved' ? `Location saved (accurate to about ${shop.locationAccuracy} m)` : locationState === 'error' ? 'Location could not be shared. You can continue without it.' : 'Share your current location to help with delivery.'}</p></div><button type="button" className="location-button" onClick={shareLocation} disabled={locationState === 'loading'}>{locationState === 'loading' ? 'Finding…' : locationState === 'saved' ? 'Update' : 'Share location'}</button></section>{error && <p className="form-error">{error}</p>}<button className="primary">Open catalogue</button></form></main>
 }
 
-function Field({ label, value, onChange, required = false, maxLength }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number }) { return <label>{label}<input value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }
+function Field({ label, value, onChange, required = false, maxLength, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number; type?: string }) { return <label>{label}{required && <span className="required-mark"> *</span>}<input type={type} value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }
 
 function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: CartItem[]; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
   const parentRef = useRef<HTMLDivElement>(null)
