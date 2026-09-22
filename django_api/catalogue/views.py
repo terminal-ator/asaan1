@@ -1,12 +1,24 @@
 import json
 import uuid
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Order, OrderItem, Product, Shop
+
+
+@require_GET
+def health(request):
+    """Liveness probe for the reverse proxy and uptime checks."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:
+        return JsonResponse({"status": "error", "database": "unavailable"}, status=503)
+    return JsonResponse({"status": "ok"})
 
 
 # The first two digits of a GSTIN are the state code. Deriving the place of

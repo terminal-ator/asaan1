@@ -10,11 +10,20 @@ EnvironmentFile=/etc/ordex/ordex.env
 ExecStart=/opt/ordex/django_api/.venv/bin/gunicorn ordex.wsgi:application \
     --bind 127.0.0.1:8081 \
     --workers 2 \
-    --timeout 60
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile - \
+    --max-requests 1000 \
+    --max-requests-jitter 100
+# `systemctl reload ordex` drains workers and starts fresh ones, so a deploy
+# does not drop in-flight requests.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/ordex
 
 [Install]
 WantedBy=multi-user.target

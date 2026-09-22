@@ -56,6 +56,7 @@ A product's **scheme %** is a trade scheme shown to shops as a badge in the PWA 
 
 - `GET /api/catalogue` — active products for the PWA.
 - `POST /api/orders` — accepts an order snapshot; repeated `clientOrderId` values are idempotent.
+- `GET /healthz` — liveness probe; returns 503 when the database is unreachable.
 - `/admin/` — Django admin, including the Product CSV import action.
 - `/console/` — staff console.
 
@@ -74,8 +75,10 @@ The PWA sends the catalogue product's UUID as `productId`. The API validates the
 
 ## Deploy
 
-1. Build the PWA: `npm run build` (outputs `dist/`).
-2. Collect Django static files: `python manage.py collectstatic --noinput`.
-3. Copy `deploy/ordex.env.example` to `/etc/ordex/ordex.env` and fill it in.
-4. Install `deploy/ordex.service` (gunicorn on `127.0.0.1:8081`) and `deploy/nginx.conf` (serves `dist/` and proxies `/api`, `/console`, `/admin`, `/static`, `/media`).
-5. Back up the database and uploaded images with `deploy/backup-ordex.sh`.
+The full strategy, first-time server setup, backup/restore drill and troubleshooting live in [`deploy/README.md`](deploy/README.md). The short version:
+
+1. Build the PWA and Django static files: `npm run build`, `python manage.py collectstatic --noinput`.
+2. Copy `deploy/ordex.env.example` to `/etc/ordex/ordex.env` and fill it in.
+3. Install `deploy/ordex.service` (gunicorn on `127.0.0.1:8081`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console).
+4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-ordex.sh`.
+5. Point an uptime check at `/healthz`.

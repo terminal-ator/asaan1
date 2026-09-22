@@ -113,6 +113,11 @@ class OrderApiTests(TestCase):
             self.assertEqual(response.status_code, 400)
         self.assertEqual(Order.objects.count(), 0)
 
+    def test_health_endpoint_reports_ok(self):
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
 
 class AdminProductImportTests(TestCase):
     def setUp(self):
