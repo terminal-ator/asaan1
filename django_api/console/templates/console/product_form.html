@@ -15,9 +15,8 @@
     </a>
   </div>
 
-  <form x-data="productEditor()" @open-product-master.window="openMaster($event.detail)"
+  <form x-data="productEditor('{% if request.GET.tab == 'pricing' %}pricing{% elif request.GET.tab == 'media' %}media{% else %}details{% endif %}')" @open-product-master.window="openMaster($event.detail)"
         @submit="saving = true"
-        @product-image-preview.window="preview = $event.detail"
         class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80"
         method="post"
         enctype="multipart/form-data">
@@ -70,19 +69,50 @@
         {% include 'console/_field.html' with field=form.scheme_percent %}
       </section>
 
-      <section x-show="tab === 'media'" x-cloak class="grid gap-4 lg:grid-cols-2">
-        {% include 'console/_field.html' with field=form.image %}
+      <section x-show="tab === 'media'" x-cloak class="grid gap-5 lg:grid-cols-2">
+        <div class="lg:col-span-2">
+          <span class="mb-1.5 block text-sm font-semibold text-slate-700">Product photo</span>
+          <div class="flex flex-wrap items-start gap-4 rounded-2xl border border-slate-200 p-4">
+            <div class="grid h-32 w-32 shrink-0 place-items-center overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+              <template x-if="preview">
+                <img :src="preview" alt="New product photo" class="h-full w-full object-cover">
+              </template>
+              <template x-if="!preview">
+                <div class="grid h-full w-full place-items-center">
+                  {% if product.image %}
+                  <img src="{{ product.image.url }}" alt="{{ product }}" class="h-full w-full object-cover">
+                  {% elif product.image_url %}
+                  <img src="{{ product.image_url }}" alt="{{ product }}" class="h-full w-full object-cover">
+                  {% else %}
+                  <span class="text-3xl text-slate-400">▦</span>
+                  {% endif %}
+                </div>
+              </template>
+            </div>
+            <div class="min-w-[220px] flex-1 space-y-3">
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700" @click="pickPhoto(true)">Take photo</button>
+                <button type="button" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600" @click="pickPhoto(false)">Choose from gallery</button>
+              </div>
+              <p class="text-xs leading-5 text-slate-500">On a phone the camera opens straight away. Photos are resized on the device before upload so they save quickly on mobile data.</p>
+              <p x-show="photoBusy" x-cloak class="text-xs font-semibold text-brand-600">Optimising photo…</p>
+              <p x-show="!photoBusy && photoName" x-cloak class="text-xs font-semibold text-emerald-600" x-text="photoName"></p>
+              <input type="file" name="image" id="id_image" accept="image/*" x-ref="photoInput" @change="onPhotoPicked($event)" class="hidden">
+              {% if product.image %}
+              <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                <input type="checkbox" name="image-clear" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                Remove current photo
+              </label>
+              {% endif %}
+              {% for error in form.image.errors %}<p class="text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}
+            </div>
+          </div>
+        </div>
         {% include 'console/_field.html' with field=form.image_url %}
         <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
           {{ form.active }}
           <span>Visible in catalogue</span>
         </label>
-        <div x-show="preview" x-cloak>
-          <p class="mb-2 text-sm font-semibold text-slate-700">Image preview</p>
-          <img class="h-28 w-28 rounded-xl object-cover ring-1 ring-slate-200"
-               :src="preview"
-               alt="Product preview">
-        </div>
       </section>
     </div>
 
@@ -133,10 +163,58 @@
   const hsnSelect = document.getElementById('id_hsn');
   const gstInput = document.getElementById('id_gst_rate');
   if (hsnSelect && gstInput) hsnSelect.addEventListener('change', () => { const match = hsnSelect.options[hsnSelect.selectedIndex]?.text.match(/\(([\d.]+)%\)$/); if (match) gstInput.value = match[1]; });
-  function productEditor() {
-    return {tab: 'details', saving: false, preview: '', master: null, masterLabel: '', masterValue: '', masterRate: '0', masterSelectId: '', masterSaving: false, masterError: '',
+  // Phone photos are several MB; shrink them on the device before upload so
+  // saving is quick on mobile data. Falls back to the original file.
+  async function shrinkPhoto(file, maxSide = 1400, quality = 0.82) {
+    try {
+      if (!file.type || !file.type.startsWith('image/')) return file;
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size <= 800 * 1024) { if (bitmap.close) bitmap.close(); return file; }
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      if (bitmap.close) bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (!blob) return file;
+      const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+      return new File([blob], name, {type: 'image/jpeg'});
+    } catch (error) { return file; }
+  }
+  function productEditor(initialTab) {
+    return {tab: initialTab || 'details', saving: false, preview: '', photoName: '', photoBusy: false, master: null, masterLabel: '', masterValue: '', masterRate: '0', masterSelectId: '', masterSaving: false, masterError: '',
       openMaster(detail) { this.master = detail.kind; this.masterLabel = detail.label.charAt(0).toUpperCase() + detail.label.slice(1); this.masterSelectId = detail.selectId; this.masterValue = ''; this.masterRate = '0'; this.masterError = ''; },
-      async createMaster() { this.masterSaving = true; this.masterError = ''; try { const response = await fetch(lookupUrl, {method: 'POST', headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({kind: this.master, name: this.masterValue.trim(), default_gst_rate: this.masterRate})}); const data = await response.json(); if (!response.ok) { this.masterError = data.error || 'Could not create master.'; return; } const select = document.getElementById(this.masterSelectId); select.add(new Option(data.label, data.id, true, true)); select.dispatchEvent(new Event('change', {bubbles: true})); if (this.master === 'hsn' && data.gstRate) document.getElementById('id_gst_rate').value = data.gstRate; this.master = null; } catch (error) { this.masterError = 'Network error. Try again.'; } finally { this.masterSaving = false; } }
+      async createMaster() { this.masterSaving = true; this.masterError = ''; try { const response = await fetch(lookupUrl, {method: 'POST', headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({kind: this.master, name: this.masterValue.trim(), default_gst_rate: this.masterRate})}); const data = await response.json(); if (!response.ok) { this.masterError = data.error || 'Could not create master.'; return; } const select = document.getElementById(this.masterSelectId); select.add(new Option(data.label, data.id, true, true)); select.dispatchEvent(new Event('change', {bubbles: true})); if (this.master === 'hsn' && data.gstRate) document.getElementById('id_gst_rate').value = data.gstRate; this.master = null; } catch (error) { this.masterError = 'Network error. Try again.'; } finally { this.masterSaving = false; } },
+      pickPhoto(camera) {
+        const input = this.$refs.photoInput;
+        if (!input) return;
+        if (camera) input.setAttribute('capture', 'environment');
+        else input.removeAttribute('capture');
+        input.value = '';
+        input.click();
+      },
+      async onPhotoPicked(event) {
+        const input = event.target;
+        const file = input.files && input.files[0];
+        if (!file) return;
+        this.photoBusy = true;
+        if (this.preview) URL.revokeObjectURL(this.preview);
+        this.preview = URL.createObjectURL(file);
+        try {
+          const optimised = await shrinkPhoto(file);
+          if (optimised !== file) {
+            const transfer = new DataTransfer();
+            transfer.items.add(optimised);
+            input.files = transfer.files;
+          }
+          this.photoName = optimised.name + ' · ' + Math.round(optimised.size / 1024) + ' KB';
+        } catch (error) {
+          this.photoName = file.name + ' · ' + Math.round(file.size / 1024) + ' KB';
+        } finally {
+          this.photoBusy = false;
+        }
+      }
     };
   }
 </script>

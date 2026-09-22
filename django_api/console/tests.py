@@ -1,13 +1,17 @@
 import csv
 import io
+import shutil
+import tempfile
 import uuid
 
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
 from catalogue.models import Brand, Category, Company, Order, OrderItem, Product, Shop
 from console.views import _consolidated_items
@@ -423,3 +427,103 @@ class ConsoleOrderFlowTests(TestCase):
         self.assertIn("Packing slip", content)
         self.assertIn("Test shop", content)
         self.assertIn("ORD-TEST-1", content)
+
+
+def sample_photo(name="photo.jpg", size=(48, 48)):
+    buffer = io.BytesIO()
+    Image.new("RGB", size, "white").save(buffer, format="JPEG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/jpeg")
+
+
+class ProductPhotoTests(TestCase):
+    """Product photos are captured on phones; uploads write to a temp media dir."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._media = tempfile.mkdtemp()
+        cls._override = override_settings(MEDIA_ROOT=cls._media)
+        cls._override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._override.disable()
+        shutil.rmtree(cls._media, ignore_errors=True)
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="staff", password="secret", is_staff=True
+        )
+        self.client.force_login(self.user)
+        company = Company.objects.create(name="Photo Co")
+        brand = Brand.objects.create(name="Photo Brand")
+        category = Category.objects.create(name="Photo Cat")
+        self.product = Product.objects.create(
+            sku="PHOTO-1",
+            name="Photo product",
+            company=company,
+            brand=brand,
+            category=category,
+            packing="Case",
+            unit="case",
+            rate=10000,
+            mrp=12000,
+        )
+
+    def payload(self, **overrides):
+        data = {
+            "sku": self.product.sku,
+            "name": self.product.name,
+            "simple_name": "",
+            "company_name": str(self.product.company_id),
+            "brand_name": str(self.product.brand_id),
+            "category_name": str(self.product.category_id),
+            "packing": "Case",
+            "unit": "case",
+            "rate": "100.00",
+            "mrp": "120.00",
+            "gst_rate": "18.00",
+            "scheme_percent": "0",
+            "active": "on",
+        }
+        data.update(overrides)
+        return data
+
+    def test_form_renders_phone_photo_controls(self):
+        response = self.client.get(
+            reverse("console-product-edit", args=[self.product.id])
+        )
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Take photo", content)
+        self.assertIn("Choose from gallery", content)
+        self.assertIn('name="image"', content)
+        self.assertIn('accept="image/*"', content)
+        self.assertIn("Optimising photo", content)
+
+    def test_media_tab_is_preselected_from_the_query_string(self):
+        response = self.client.get(
+            reverse("console-product-edit", args=[self.product.id]), {"tab": "media"}
+        )
+        self.assertContains(response, "productEditor('media')")
+
+    def test_photo_uploaded_from_the_camera_is_saved(self):
+        response = self.client.post(
+            reverse("console-product-edit", args=[self.product.id]),
+            self.payload(image=sample_photo("camera.jpg")),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.product.refresh_from_db()
+        self.assertTrue(self.product.image)
+        self.assertTrue(self.product.image.name.endswith(".jpg"))
+
+    def test_remove_photo_checkbox_clears_the_image(self):
+        self.product.image.save("existing.jpg", ContentFile(b"fake"), save=True)
+        response = self.client.post(
+            reverse("console-product-edit", args=[self.product.id]),
+            self.payload(**{"image-clear": "on"}),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.image)

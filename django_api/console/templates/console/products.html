@@ -54,8 +54,21 @@
           {% for product in products %}
           <tr class="transition hover:bg-slate-50">
             <td class="px-4 py-4 sm:px-6">
-              <p class="font-semibold">{{ product }}</p>
-              <p class="mt-1 text-xs text-slate-500">ERP: {{ product.name }}</p>
+              <div class="flex items-center gap-3">
+                <span class="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ring-1 ring-slate-200">
+                  {% if product.image %}
+                  <img src="{{ product.image.url }}" alt="" class="h-full w-full object-cover">
+                  {% elif product.image_url %}
+                  <img src="{{ product.image_url }}" alt="" class="h-full w-full object-cover">
+                  {% else %}
+                  ▦
+                  {% endif %}
+                </span>
+                <span class="min-w-0">
+                  <p class="font-semibold">{{ product }}</p>
+                  <p class="mt-1 text-xs text-slate-500">ERP: {{ product.name }}</p>
+                </span>
+              </div>
             </td>
             <td class="px-4 py-4 text-slate-600">{{ product.sku }}</td>
             <td class="px-4 py-4 text-slate-600">
@@ -68,10 +81,16 @@
               </span>
             </td>
             <td class="px-4 py-4 sm:px-6">
-              <a class="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600"
-                 href="{% url 'console-product-edit' product.id %}">
-                Edit
-              </a>
+              <div class="flex flex-wrap gap-2">
+                <a class="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600"
+                   href="{% url 'console-product-edit' product.id %}?tab=media">
+                  Photo
+                </a>
+                <a class="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600"
+                   href="{% url 'console-product-edit' product.id %}">
+                  Edit
+                </a>
+              </div>
             </td>
           </tr>
           {% empty %}
