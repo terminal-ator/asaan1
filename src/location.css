@@ -1,0 +1,6 @@
+.location-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 12px; border: 1px solid #dce5df; border-radius: 10px; background: #f6faf7; }
+.location-card b { display: block; font-size: 13px; }
+.location-card small { margin-left: 4px; color: #718078; font-weight: 500; }
+.location-card p { margin: 4px 0 0; font-size: 12px; line-height: 1.35; color: #607068; }
+.location-button { flex: 0 0 auto; border: 0; border-radius: 8px; background: #176b51; color: #fff; padding: 9px 10px; font-size: 12px; font-weight: 700; }
+.location-button:disabled { opacity: .6; }

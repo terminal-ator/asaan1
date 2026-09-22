@@ -1,0 +1,70 @@
+{% extends 'console/base.html' %}
+
+{% block content %}
+<main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <a class="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+         href="{% url 'console-dashboard' %}">← Back to orders</a>
+      <h1 class="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+        {{ order.order_number }}
+      </h1>
+      <p class="mt-1 text-sm text-slate-500">
+        {{ order.created_at|date:'d M Y, H:i' }} · {{ order.get_status_display }}
+      </p>
+      {% if order.loading %}
+      <p class="mt-2 text-sm text-slate-500">Loading: <a class="font-semibold text-emerald-700" href="{% url 'console-loading-detail' order.loading.id %}">{{ order.loading.loading_number }}</a></p>
+      {% endif %}
+    </div>
+    <span class="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700">
+      {{ order.get_status_display }}
+    </span>
+    <div class="no-print flex flex-wrap gap-2"><a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-invoice-detail' order.id %}">Print invoice</a><a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-invoice-excel' order.id %}">Export Excel data</a></div>
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+      <div class="border-b border-slate-200 px-5 py-4 sm:px-6">
+        <h2 class="font-semibold">Order items</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr><th class="px-5 py-3 sm:px-6">Product</th><th class="px-4 py-3">Qty</th><th class="px-4 py-3">GST</th><th class="px-4 py-3 sm:px-6">Amount</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for item in order.items.all %}
+            <tr>
+              <td class="px-5 py-4 sm:px-6"><p class="font-semibold">{{ item.name }}</p><p class="mt-1 text-xs text-slate-500">{{ item.sku }} · {{ item.unit }}</p></td>
+              <td class="px-4 py-4">{{ item.quantity }}</td>
+              <td class="px-4 py-4">{{ item.gst_rate }}%</td>
+              <td class="whitespace-nowrap px-4 py-4 font-semibold sm:px-6">₹{{ item.line_total|floatformat:0 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+        <div class="ml-auto max-w-xs space-y-2 text-sm">
+          <div class="flex justify-between"><span class="text-slate-500">Taxable subtotal</span><span>₹{{ order.total|floatformat:0 }}</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">GST</span><span>₹{{ tax_total|floatformat:0 }}</span></div>
+          <div class="flex justify-between border-t border-slate-200 pt-2 text-base font-bold"><span>Total</span><span>₹{{ grand_total|floatformat:0 }}</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
+      <h2 class="font-semibold">Invoice & GST details</h2>
+      <p class="mt-1 text-sm text-slate-500">Complete these fields before generating an invoice.</p>
+      <form class="mt-5 space-y-4" method="post">
+        {% csrf_token %}
+        {% for field in form %}
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold text-slate-700">{{ field.label }}</span>{{ field }}{% for error in field.errors %}<span class="mt-1 block text-xs text-rose-600">{{ error }}</span>{% endfor %}</label>
+        {% endfor %}
+        <button class="w-full rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800">Save invoice details</button>
+      </form>
+      <div class="mt-5 border-t border-slate-100 pt-4 text-sm"><p class="font-semibold">Shop</p><p class="mt-1 text-slate-600">{{ order.shop.storeName }} · {{ order.shop.mobile }}</p><p class="mt-1 text-slate-500">GSTIN: {{ order.customer_gstin|default:shop_gstin|default:'Not provided' }}</p></div>
+    </section>
+  </div>
+</main>
+{% endblock %}

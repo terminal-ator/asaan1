@@ -1,0 +1,19 @@
+.history.clickable { cursor: pointer; }
+.history.clickable:active { background: #f6faf7; }
+.chevron { color: #8b978f; font-size: 24px; line-height: 16px; }
+.summary-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin: 23px 0 18px; }
+.summary-heading h1 { margin: 7px 0 3px; font-size: 20px; overflow-wrap: anywhere; }
+.summary-heading p { margin: 0; color: #718078; font-size: 12px; }
+.summary-heading > b { color: #176b51; font-size: 18px; white-space: nowrap; }
+.summary .pending,.summary .submitted { display: inline-block; font-size: 11px; text-transform: capitalize; padding: 3px 7px; border-radius: 4px; background: #fff4d5; color: #87681a; }
+.summary .submitted { background: #e5f5ec; color: #176b51; }
+.summary-shop { display: grid; gap: 4px; padding: 13px; border-radius: 9px; background: #f2f7f3; }
+.summary-shop small,.summary-items small { color: #68776e; font-size: 12px; }
+.summary h2 { margin: 24px 0 9px; font-size: 15px; }
+.summary-items { border-top: 1px solid #e7ece7; }
+.summary-items > div { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #e7ece7; }
+.summary-items b { display: block; font-size: 14px; }
+.summary-items span,.summary-items strong { font-size: 13px; white-space: nowrap; }
+.summary-total { display: flex; justify-content: space-between; padding: 18px 0 5px; }
+.summary-total b { font-size: 20px; }
+.summary-cancel { width: 100%; margin-top: 9px; border: 0; border-radius: 9px; background: #fff0ed; color: #b2402b; padding: 13px; font: inherit; font-weight: 700; }

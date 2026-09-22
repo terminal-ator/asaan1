@@ -1,0 +1,92 @@
+from decimal import Decimal, ROUND_HALF_UP
+
+from django import forms
+
+from catalogue.models import Brand, Category, Company, HSN, Product
+
+
+class ProductForm(forms.ModelForm):
+    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Sale rate (₹)")
+    mrp = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="MRP (₹)")
+    company_name = forms.ModelChoiceField(queryset=Company.objects.order_by("name"), label="Company", empty_label="Select company")
+    brand_name = forms.ModelChoiceField(queryset=Brand.objects.order_by("name"), label="Brand", empty_label="Select brand")
+    category_name = forms.ModelChoiceField(queryset=Category.objects.order_by("name"), label="Category", empty_label="Select category")
+    hsn = forms.ModelChoiceField(queryset=HSN.objects.order_by("code"), label="HSN", required=False, empty_label="Select HSN")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if self.instance and self.instance.pk and self.instance.company_id:
+            self.fields["company_name"].initial = self.instance.company_id
+            self.fields["brand_name"].initial = self.instance.brand_id
+            self.fields["category_name"].initial = self.instance.category_id
+            self.initial["rate"] = Decimal(self.instance.rate) / 100
+            self.initial["mrp"] = Decimal(self.instance.mrp) / 100
+        if self.instance and self.instance.pk and self.instance.hsn_id:
+            self.fields["hsn"].initial = self.instance.hsn_id
+
+        field_class = (
+            "block w-full rounded-xl border border-slate-300 bg-white px-3 "
+            "py-2.5 text-sm outline-none transition focus:border-emerald-600 "
+            "focus:ring-2 focus:ring-emerald-100"
+        )
+
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.setdefault(
+                    "class",
+                    "h-4 w-4 rounded border-slate-300 text-emerald-700 "
+                    "focus:ring-emerald-600",
+                )
+            else:
+                field.widget.attrs.setdefault("class", field_class)
+
+        self.fields["image"].widget.attrs["@change"] = (
+            "if ($event.target.files[0]) "
+            "document.dispatchEvent(new CustomEvent('product-image-preview', "
+            "{detail: URL.createObjectURL($event.target.files[0])}))"
+        )
+
+    def save(self, commit=True):
+        product = super().save(commit=False)
+        product.company = self.cleaned_data["company_name"]
+        product.brand = self.cleaned_data["brand_name"]
+        product.category = self.cleaned_data["category_name"]
+        product.hsn = self.cleaned_data.get("hsn")
+        product.hsn_code = product.hsn.code if product.hsn else product.hsn_code
+        product.rate = int((self.cleaned_data["rate"] * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        product.mrp = int((self.cleaned_data["mrp"] * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        if product.hsn and not self.initial.get("gst_rate") and not self.data.get("gst_rate"):
+            product.gst_rate = product.hsn.default_gst_rate
+        if commit:
+            product.save()
+            self.save_m2m()
+        return product
+
+    class Meta:
+        model = Product
+        fields = [
+            "sku",
+            "name",
+            "simple_name",
+            "company_name",
+            "brand_name",
+            "category_name",
+            "hsn",
+            "packing",
+            "unit",
+            "rate",
+            "mrp",
+            "gst_rate",
+            "image",
+            "image_url",
+            "active",
+        ]
+        widgets = {
+            "rate": forms.NumberInput(
+                attrs={"placeholder": "Rupees, e.g. 1788.00"}
+            ),
+            "mrp": forms.NumberInput(
+                attrs={"placeholder": "Rupees, e.g. 2160.00"}
+            ),
+        }

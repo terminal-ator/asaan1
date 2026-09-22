@@ -1,0 +1,9 @@
+.cart-fab { width: min(calc(100% - 32px), 728px); min-height: 58px; justify-content: flex-start; padding: 9px 12px; border-radius: 13px; }
+.cart-icon { display: grid; width: 37px; height: 37px; place-items: center; border-radius: 10px; background: #ffffff24; }
+.cart-icon svg { width: 22px; height: 22px; }
+.cart-copy { display: grid; flex: 1; gap: 2px; text-align: left; }
+.cart-copy b { font-size: 14px; }
+.cart-fab .cart-copy b { border-radius: 0; background: transparent; color: inherit; padding: 0; }
+.cart-copy small { font-size: 11px; font-weight: 500; opacity: .8; }
+.cart-fab > strong { font-size: 15px; letter-spacing: -.2px; }
+.cart-arrow { display: grid; width: 24px; place-items: center; font-size: 27px; line-height: 1; opacity: .85; }

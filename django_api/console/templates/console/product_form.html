@@ -1,0 +1,142 @@
+{% extends 'console/base.html' %}
+
+{% block content %}
+<main class="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:py-7">
+  <div class="mb-5 flex items-end justify-between gap-4">
+    <div>
+      <p class="text-sm font-semibold text-emerald-700">Catalogue</p>
+      <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">
+        {% if product %}Edit{% else %}Add{% endif %} product
+      </h1>
+    </div>
+    <a class="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 sm:block"
+       href="{% url 'console-products' %}">
+      Cancel
+    </a>
+  </div>
+
+  <form x-data="productEditor()" @open-product-master.window="openMaster($event.detail)"
+        @submit="saving = true"
+        @product-image-preview.window="preview = $event.detail"
+        class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200"
+        method="post"
+        enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div class="flex overflow-x-auto border-b border-slate-200 px-2 sm:px-5">
+      <button type="button"
+              @click="tab = 'details'"
+              :class="tab === 'details' ? 'border-emerald-700 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
+              class="whitespace-nowrap border-b-2 px-3 py-4 text-sm font-semibold">
+        Product details
+      </button>
+      <button type="button"
+              @click="tab = 'pricing'"
+              :class="tab === 'pricing' ? 'border-emerald-700 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
+              class="whitespace-nowrap border-b-2 px-3 py-4 text-sm font-semibold">
+        Pricing & logistics
+      </button>
+      <button type="button"
+              @click="tab = 'media'"
+              :class="tab === 'media' ? 'border-emerald-700 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
+              class="whitespace-nowrap border-b-2 px-3 py-4 text-sm font-semibold">
+        Media & visibility
+      </button>
+    </div>
+
+    <div class="p-5 sm:p-7">
+      {% if form.non_field_errors %}
+      <div class="mb-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ form.non_field_errors }}
+      </div>
+      {% endif %}
+
+      <section x-show="tab === 'details'" x-cloak class="grid gap-4 lg:grid-cols-2">
+        {% include 'console/_field.html' with field=form.sku %}
+        {% include 'console/_field.html' with field=form.name %}
+        {% include 'console/_field.html' with field=form.simple_name %}
+        {% include 'console/_field.html' with field=form.company_name %}
+        {% include 'console/_field.html' with field=form.brand_name %}
+        {% include 'console/_field.html' with field=form.category_name %}
+        {% include 'console/_field.html' with field=form.hsn %}
+      </section>
+
+      <section x-show="tab === 'pricing'" x-cloak class="grid gap-4 lg:grid-cols-2">
+        {% include 'console/_field.html' with field=form.packing %}
+        {% include 'console/_field.html' with field=form.unit %}
+        {% include 'console/_field.html' with field=form.rate %}
+        {% include 'console/_field.html' with field=form.mrp %}
+        {% include 'console/_field.html' with field=form.gst_rate %}
+      </section>
+
+      <section x-show="tab === 'media'" x-cloak class="grid gap-4 lg:grid-cols-2">
+        {% include 'console/_field.html' with field=form.image %}
+        {% include 'console/_field.html' with field=form.image_url %}
+        <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
+          {{ form.active }}
+          <span>Visible in catalogue</span>
+        </label>
+        <div x-show="preview" x-cloak>
+          <p class="mb-2 text-sm font-semibold text-slate-700">Image preview</p>
+          <img class="h-28 w-28 rounded-xl object-cover ring-1 ring-slate-200"
+               :src="preview"
+               alt="Product preview">
+        </div>
+      </section>
+    </div>
+
+    <div x-show="master" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @keydown.escape.window="master=null">
+      <section class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-start justify-between"><div><p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Quick create</p><h2 class="text-xl font-bold text-slate-900" x-text="master === 'hsn' ? 'New HSN' : 'New ' + master"></h2></div><button type="button" @click="master=null" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100">&times;</button></div>
+        <p x-show="masterError" x-text="masterError" class="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700"></p>
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold text-slate-700" x-text="master === 'hsn' ? 'HSN code' : masterLabel"></span><input x-model="masterValue" required autofocus class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"></label>
+        <label x-show="master === 'hsn'" class="mt-4 block"><span class="mb-1.5 block text-sm font-semibold text-slate-700">Default GST rate (%)</span><input type="number" min="0" max="100" step="0.01" x-model="masterRate" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"></label>
+        <div class="mt-6 flex justify-end gap-2"><button type="button" @click="master=null" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" @click="createMaster" :disabled="masterSaving || !masterValue.trim()" class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" x-text="masterSaving ? 'Creating…' : 'Create and select'"></button></div>
+      </section>
+    </div>
+
+    <div class="flex items-center justify-between border-t border-slate-100 px-5 py-4 sm:px-7">
+      <a class="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 sm:hidden"
+         href="{% url 'console-products' %}">
+        Cancel
+      </a>
+      <span class="hidden text-xs text-slate-400 sm:block">Fields marked required must be completed.</span>
+      <button :disabled="saving"
+              class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+        <span x-text="saving ? 'Saving…' : 'Save product'"></span>
+      </button>
+    </div>
+  </form>
+</main>
+<script>
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  const lookupUrl = "{% url 'console-quick-lookup' %}";
+  const lookupKinds = {id_company_name: ['company', 'company'], id_brand_name: ['brand', 'brand'], id_category_name: ['category', 'category'], id_hsn: ['hsn', 'HSN']};
+  function superpowerSelect(select, kind, label) {
+    if (!select || select.dataset.superpower) return;
+    select.dataset.superpower = 'true';
+    const wrap = document.createElement('div'); wrap.className = 'relative';
+    select.parentNode.insertBefore(wrap, select); wrap.appendChild(select); select.classList.add('hidden');
+    const input = document.createElement('input'); input.type = 'search'; input.placeholder = `Search ${label}…`; input.autocomplete = 'off'; input.className = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
+    const menu = document.createElement('div'); menu.className = 'absolute left-0 right-0 z-40 mt-1 hidden max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl'; wrap.append(input, menu);
+    const selectedText = () => select.options[select.selectedIndex]?.text || '';
+    input.value = select.value ? selectedText() : '';
+    const close = () => menu.classList.add('hidden');
+    const render = () => { const q = input.value.toLowerCase(); menu.innerHTML = '';
+      const create = document.createElement('button'); create.type = 'button'; create.textContent = `+ Create new ${label}`; create.className = 'mb-1 block w-full rounded-lg border-b border-slate-100 px-3 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50';
+      create.onclick = () => { close(); window.dispatchEvent(new CustomEvent('open-product-master', {detail: {kind, selectId: select.id, label}})); };
+      menu.appendChild(create); Array.from(select.options).filter(o => !q || o.text.toLowerCase().includes(q)).forEach(option => { const button = document.createElement('button'); button.type = 'button'; button.textContent = option.text; button.className = 'block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-emerald-50'; button.onclick = () => { select.value = option.value; input.value = option.value ? option.text : ''; select.dispatchEvent(new Event('change', {bubbles: true})); close(); }; menu.appendChild(button); }); menu.classList.remove('hidden'); };
+    input.onfocus = () => { input.select(); render(); }; input.oninput = render; select.onchange = () => { input.value = select.value ? selectedText() : ''; }; document.addEventListener('click', event => { if (!wrap.contains(event.target)) close(); });
+  }
+  Object.entries(lookupKinds).forEach(([id, [kind, label]]) => superpowerSelect(document.getElementById(id), kind, label));
+  const hsnSelect = document.getElementById('id_hsn');
+  const gstInput = document.getElementById('id_gst_rate');
+  if (hsnSelect && gstInput) hsnSelect.addEventListener('change', () => { const match = hsnSelect.options[hsnSelect.selectedIndex]?.text.match(/\(([\d.]+)%\)$/); if (match) gstInput.value = match[1]; });
+  function productEditor() {
+    return {tab: 'details', saving: false, preview: '', master: null, masterLabel: '', masterValue: '', masterRate: '0', masterSelectId: '', masterSaving: false, masterError: '',
+      openMaster(detail) { this.master = detail.kind; this.masterLabel = detail.label.charAt(0).toUpperCase() + detail.label.slice(1); this.masterSelectId = detail.selectId; this.masterValue = ''; this.masterRate = '0'; this.masterError = ''; },
+      async createMaster() { this.masterSaving = true; this.masterError = ''; try { const response = await fetch(lookupUrl, {method: 'POST', headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({kind: this.master, name: this.masterValue.trim(), default_gst_rate: this.masterRate})}); const data = await response.json(); if (!response.ok) { this.masterError = data.error || 'Could not create master.'; return; } const select = document.getElementById(this.masterSelectId); select.add(new Option(data.label, data.id, true, true)); select.dispatchEvent(new Event('change', {bubbles: true})); if (this.master === 'hsn' && data.gstRate) document.getElementById('id_gst_rate').value = data.gstRate; this.master = null; } catch (error) { this.masterError = 'Network error. Try again.'; } finally { this.masterSaving = false; } }
+    };
+  }
+</script>
+{% endblock %}

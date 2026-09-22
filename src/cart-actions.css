@@ -1,0 +1,4 @@
+.cart-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cart-heading h1 { flex: 1; }
+.cart-heading button,.remove-line { border: 0; background: none; color: #b2402b; font: inherit; font-size: 12px; font-weight: 700; }
+.remove-line { margin-top: 5px; padding: 0; }

@@ -1,0 +1,8 @@
+ordex.db
+*.db-journal
+.env
+node_modules
+dist
+django_api/.venv
+django_api/db.sqlite3
+django_api/media

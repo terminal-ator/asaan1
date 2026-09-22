@@ -1,0 +1,17 @@
+[Unit]
+Description=Ordex API
+After=network.target
+
+[Service]
+User=ordex
+Group=ordex
+WorkingDirectory=/opt/ordex
+EnvironmentFile=/etc/ordex/ordex.env
+ExecStart=/opt/ordex/ordex
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

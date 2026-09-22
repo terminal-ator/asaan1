@@ -1,0 +1,12 @@
+{% extends 'console/base.html' %}
+{% load console_tags %}
+
+{% block content %}
+<main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
+  <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div><p class="text-sm font-semibold text-emerald-700">ERP</p><h1 class="text-2xl font-bold tracking-tight sm:text-3xl">Purchases</h1><p class="mt-1 text-sm text-slate-500">Record supplier invoices and post stock into a warehouse.</p></div>
+    <a class="inline-flex w-fit rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800" href="{% url 'console-purchase-new' %}">New purchase</a>
+  </div>
+  <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200"><div class="overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-5 py-3 sm:px-6">Purchase</th><th class="px-4 py-3">Supplier</th><th class="px-4 py-3">Warehouse</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 sm:px-6">Total</th></tr></thead><tbody class="divide-y divide-slate-100">{% for purchase in purchases %}<tr class="hover:bg-slate-50"><td class="px-5 py-4 sm:px-6"><a class="font-semibold text-emerald-700" href="{% url 'console-purchase-edit' purchase.id %}">{{ purchase.purchase_number }}</a><p class="mt-1 text-xs text-slate-500">{{ purchase.created_at|date:'d M Y, H:i' }}</p></td><td class="px-4 py-4">{{ purchase.supplier.name }}</td><td class="px-4 py-4">{{ purchase.warehouse.name }}</td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold {% if purchase.status == 'posted' %}bg-emerald-50 text-emerald-700{% elif purchase.status == 'cancelled' %}bg-rose-50 text-rose-700{% else %}bg-amber-50 text-amber-700{% endif %}">{{ purchase.get_status_display }}</span></td><td class="px-4 py-4 font-semibold sm:px-6">₹{{ purchase.grand_total|floatformat:0 }}</td></tr>{% empty %}<tr><td class="px-6 py-12 text-center text-slate-500" colspan="5">No purchases recorded yet.</td></tr>{% endfor %}</tbody></table></div></section>
+</main>
+{% endblock %}
