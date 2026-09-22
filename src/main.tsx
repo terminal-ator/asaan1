@@ -13,7 +13,7 @@ import './cart-actions.css'
 import './product-images.css'
 
 // Same-origin by default: Vite proxies /api and /media to Django while
-// developing, and in production nginx serves the built PWA next to Django.
+// developing, and in production the reverse proxy serves the built PWA next to Django.
 const apiURL = import.meta.env.VITE_API_URL ?? ''
 
 type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; mrp: number; schemePercent?: string; gstRate?: string; hsnCode?: string; imageUrl?: string; updatedAt: string; createdAt: string }

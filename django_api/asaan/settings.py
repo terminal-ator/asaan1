@@ -27,7 +27,7 @@ CORS_ALLOWED_ORIGINS=os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5173,htt
 CSRF_TRUSTED_ORIGINS=[origin for origin in os.getenv('DJANGO_CSRF_TRUSTED_ORIGINS','').split(',') if origin]
 LOGIN_URL='/admin/login/'
 LOGIN_REDIRECT_URL='/console/'
-# TLS terminates at nginx; trust its forwarded protocol header when present.
+# TLS terminates at the reverse proxy; trust its forwarded protocol header.
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
 # Enable only when the console is served over HTTPS.
 SESSION_COOKIE_SECURE=os.getenv('DJANGO_SECURE_COOKIES','false').lower()=='true'

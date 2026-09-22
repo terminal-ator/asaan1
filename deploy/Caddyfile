@@ -1,0 +1,64 @@
+# Asaan: serves the built PWA and proxies the Django API and console.
+#
+# Install as /etc/caddy/Caddyfile. Caddy obtains and renews the certificate for
+# the hostname below automatically, so ports 80 and 443 must be reachable.
+# To serve a www host as well, add its DNS record and list it here:
+#
+#   asaan.in, www.asaan.in {
+
+asaan.in {
+	log
+
+	encode zstd gzip
+
+	# The app shell and service worker must always revalidate so a deploy is
+	# picked up. Vite output is content-hashed; media and static files can cache.
+	@shell path / /index.html /sw.js /manifest.webmanifest
+	header @shell Cache-Control "no-cache"
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	@media path /media/*
+	header @media Cache-Control "public, max-age=604800"
+
+	@static path /static/*
+	header @static Cache-Control "public, max-age=604800"
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Everything dynamic goes to gunicorn on loopback. Caddy sets the
+	# X-Forwarded-* headers itself, which Django needs for CSRF and cookies.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /console/* {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /admin/* {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /logout/ {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8123
+	}
+
+	# collectstatic output and uploaded product photos, straight from disk.
+	handle_path /static/* {
+		root * /opt/asaan/django_api/staticfiles
+		file_server
+	}
+	handle_path /media/* {
+		root * /var/lib/asaan/media
+		file_server
+	}
+
+	# The PWA itself; unknown paths fall back to the shell for client routing.
+	handle {
+		root * /opt/asaan/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

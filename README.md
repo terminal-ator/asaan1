@@ -44,7 +44,7 @@ Set `VITE_API_URL` only when the PWA and API are on different origins.
 
 ## Product photos
 
-Adding a photo is built for a phone: open a product's **Media** tab — or use the **Photo** shortcut in the products list — and tap **Take photo** to open the camera directly, or **Choose from gallery**. The picture is resized on the device before upload (max 1400 px, JPEG), so it saves quickly on mobile data, and the products list shows a thumbnail for each item. Django serves `/media/` while `DEBUG` is on; nginx serves it in production.
+Adding a photo is built for a phone: open a product's **Media** tab — or use the **Photo** shortcut in the products list — and tap **Take photo** to open the camera directly, or **Choose from gallery**. The picture is resized on the device before upload (max 1400 px, JPEG), so it saves quickly on mobile data, and the products list shows a thumbnail for each item. Django serves `/media/` while `DEBUG` is on; Caddy serves it in production.
 
 ## Bulk editing
 
@@ -79,6 +79,6 @@ The full strategy, first-time server setup, backup/restore drill and troubleshoo
 
 1. Build the PWA and Django static files: `npm run build`, `python manage.py collectstatic --noinput`.
 2. Copy `deploy/asaan.env.example` to `/etc/asaan/asaan.env` and fill it in.
-3. Install `deploy/asaan.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console) — see [`deploy/README.md`](deploy/README.md).
+3. Install `deploy/asaan.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/Caddyfile` (serves the PWA, `/static`, `/media` and proxies the API and console, with automatic TLS). On a box where 80/443 are already in use, use `deploy/nginx.conf` instead — see [`deploy/README.md`](deploy/README.md).
 4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-asaan.sh`. SQLite is the default; set `POSTGRES_DB` and friends in the env file to use PostgreSQL instead.
 5. Point an uptime check at `/healthz`.

@@ -1,11 +1,11 @@
 # Deploying Asaan
 
-One small server runs everything: nginx terminates TLS and serves the built PWA, gunicorn runs Django, SQLite and uploaded photos live on local disk. That is comfortably enough for a distributor taking tens to a few hundred orders a day, and it keeps the moving parts to three.
+One small server runs everything: Caddy terminates TLS and serves the built PWA, gunicorn runs Django, SQLite and uploaded photos live on local disk. That is comfortably enough for a distributor taking tens to a few hundred orders a day, and it keeps the moving parts to three.
 
 ```
                     ┌──────────────────────── VPS (Ubuntu LTS) ───────────────────────┐
   phone / laptop    │                                                                  │
-      │             │  nginx :443 ──┬── /                → /opt/asaan/dist  (PWA)      │
+      │             │  Caddy :443 ──┬── /                → /opt/asaan/dist  (PWA)      │
       └── HTTPS ────┼───────────────┼── /assets/         → hashed build files          │
                     │               ├── /static/         → django_api/staticfiles       │
                     │               ├── /media/          → /var/lib/asaan/media         │
@@ -32,11 +32,11 @@ One small server runs everything: nginx terminates TLS and serves the built PWA,
 | Port | Use | Exposed publicly? |
 |---|---|---|
 | `8123` | gunicorn (internal) | no — bound to `127.0.0.1` |
-| `443` | nginx, TLS, when you have a hostname | yes |
-| `80` | nginx, ACME challenge and redirect | yes (needed for Let's Encrypt) |
+| `443` | Caddy, TLS, when you have a hostname | yes |
+| `80` | Caddy, ACME challenge and redirect | yes (needed for certificates) |
 | `9123` | optional public HTTPS port if `443` is already taken by another service | yes, via the firewall |
 
-Keep `GUNICORN_PORT` in `/etc/asaan/asaan.env` and the `proxy_pass` values in `nginx.conf` identical; nothing else needs the internal port.
+Keep `GUNICORN_PORT` in `/etc/asaan/asaan.env` and the upstream address in the `Caddyfile` identical; nothing else needs the internal port.
 
 ## Assumptions and sizing
 
@@ -50,12 +50,18 @@ Keep `GUNICORN_PORT` in `/etc/asaan/asaan.env` and the `proxy_pass` values in `n
 ```sh
 # as root
 adduser --system --group --home /opt/asaan asaan
-apt update && apt install -y nginx sqlite3 git curl ca-certificates unzip
+apt update && apt install -y sqlite3 git curl ca-certificates gnupg unzip
 # a recent Node LTS for building the PWA (or build it in CI and skip this)
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs
-# TLS (after DNS points at the server) and a firewall
-apt install -y certbot python3-certbot-nginx ufw fail2ban unattended-upgrades
-ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw --force enable
+# Caddy, from its official repository
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  > /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+# firewall
+apt install -y ufw fail2ban unattended-upgrades
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
 
 # directories
 install -d -o asaan -g asaan /var/lib/asaan /var/lib/asaan/media
@@ -76,12 +82,12 @@ Install the unit and site, then create the admin account:
 cp /opt/asaan/deploy/asaan.service /etc/systemd/system/asaan.service
 cp /opt/asaan/deploy/asaan.env.example /etc/asaan/asaan.env   # then edit it
 chown root:asaan /etc/asaan/asaan.env && chmod 640 /etc/asaan/asaan.env
-cp /opt/asaan/deploy/nginx.conf /etc/nginx/sites-available/asaan
-ln -s /etc/nginx/sites-available/asaan /etc/nginx/sites-enabled/asaan
-systemctl daemon-reload && nginx -t && systemctl enable --now asaan nginx
+sed 's/asaan\.in/<your-hostname>/' /opt/asaan/deploy/Caddyfile > /etc/caddy/Caddyfile
+systemctl daemon-reload && systemctl enable --now asaan caddy
 runuser -u asaan -- sh -c 'cd /opt/asaan/django_api && .venv/bin/python manage.py createsuperuser'
-certbot --nginx -d asaan.in
 ```
+
+Caddy fetches and renews the certificate for that hostname by itself; once `https://<your-hostname>/healthz` answers, set `DJANGO_SECURE_COOKIES=true` and restart the service. On a box that already serves websites on 80/443, use the nginx vhost in `deploy/nginx.conf` instead — see *Shared server* below.
 
 The env file must contain at least:
 
@@ -193,9 +199,9 @@ A backup you have never restored is not a backup. Also copy the env file somewhe
 ## 5. Monitoring and logs
 
 - `curl -fsS https://asaan.in/healthz` → `{"status":"ok"}`; it returns 503 when the database is unreachable. Point an uptime checker (UptimeRobot, healthchecks.io, or a cron `curl`) at it and alert to email/WhatsApp.
-- `journalctl -u asaan -f` for gunicorn access and error logs; `journalctl -u nginx`, `/var/log/nginx/`.
+- `journalctl -u asaan -f` for gunicorn logs; `journalctl -u caddy -f` for the proxy, certificate and access logs.
 - Watch disk space (`df -h`): SQLite plus photos grows slowly, but `/var/backups/asaan` can creep. `journalctl --vacuum-time=30d` trims old logs.
-- `certbot renew` runs from its own timer; confirm with `systemctl list-timers | grep certbot`.
+- Caddy renews certificates automatically, about a month before expiry; `journalctl -u caddy | grep -i certificate` shows the renewals.
 - `unattended-upgrades` should be enabled for security patches; reboot when the kernel asks.
 
 ## 6. Security checklist
@@ -205,7 +211,7 @@ A backup you have never restored is not a backup. Also copy the env file somewhe
 - [ ] SSH key-only, root login disabled, `ufw` on, `fail2ban` running.
 - [ ] Strong admin password; the console logs out through `/logout/`.
 - [ ] Photos are public by URL under `/media/` — that is fine for catalogue images, but do not upload anything sensitive.
-- [ ] Optional: restrict `/admin/` to the office IP in nginx (`allow 203.0.113.4; deny all;` inside the location).
+- [ ] Optional: restrict `/admin/*` to the office IP (`@admin remote_ip` style matcher in the Caddyfile, or nginx `allow`/`deny` if you are on that path).
 - [ ] Django admin and console accounts: one per person, so a departure is a deactivation, not a shared-password change.
 
 ## 7. Shared server (Lightsail and friends)
@@ -216,15 +222,15 @@ Asaan is happy to share a box with other services as long as ports and the rever
 
 ```sh
 ss -ltnp                        # what is listening, and on which ports
-systemctl is-active nginx apache2 caddy
+systemctl is-active caddy nginx apache2
 df -h && free -h                # room for SQLite, photos and a node build
 ```
 
 Then choose the shape:
 
-- **nginx already owns 80/443** (the usual case): add Asaan as another `server_name` vhost. Nothing new is exposed, other services are untouched, and `certbot --nginx` issues the certificate. Preferred.
+- **a web server already owns 80/443** (the usual case on a shared box): Caddy cannot bind those ports, so add Asaan as another nginx vhost using `deploy/nginx.conf`, and run `certbot --nginx -d <hostname>` for the certificate. Nothing new is exposed and other sites are untouched.
 - **separate public port**: after getting a certificate, change `listen 80;` to `listen 9123 ssl;` in the Asaan server block. Open 9123 in the Lightsail console and in `ufw` if enabled.
-- **no hostname yet**: `https://203-0-113-10.sslip.io` resolves to your IP automatically, so `certbot --nginx -d 203-0-113-10.sslip.io` can issue a real certificate. The PWA can then install and work offline.
+- **no hostname yet**: `https://203-0-113-10.sslip.io` resolves to your IP automatically. Point Caddy (or the nginx vhost plus `certbot --nginx -d 203-0-113-10.sslip.io`) at it and you get a real certificate, so the PWA can install and work offline.
 - **no TLS at all yet**: treat plain HTTP as a temporary test — the PWA's install and offline features require HTTPS. For the console, do not expose it; tunnel instead: `ssh -L 8123:127.0.0.1:8123 ubuntu@<ip>` then browse `http://localhost:8123/console/`.
 
 **Lightsail firewall** (separate from `ufw`): Console → instance → *Networking* → *IPv4 Firewall* → *Add rule*. Allow `HTTPS 443` and `HTTP 80` for Let's Encrypt, or your custom TCP port `9123`. Your SSH rule is already there. Attach a **static IP** so the address survives a reboot, and turn on automatic **instance snapshots** as a second line of defence behind the nightly backups.
@@ -232,7 +238,7 @@ Then choose the shape:
 **Coexistence notes:**
 
 - Only one process can bind a port — check `ss -ltnp | grep 8123` before starting.
-- nginx routes virtual hosts by `server_name`, so adding one does not disturb the others.
+- nginx routes virtual hosts by `server_name` and Caddy by site address, so adding one does not disturb the others.
 - Memory: two gunicorn workers plus SQLite sit around 150–250 MB. On a 512 MB instance add 1 GB of swap, or set `--workers 1`.
 - If another web server (Apache, Caddy) owns 80/443, either put Asaan behind it as a plain HTTP upstream on 8123, or use the custom-port route.
 
@@ -268,11 +274,12 @@ After deploying:
 
 | Symptom | Check |
 |---|---|
-| 502 from nginx | `systemctl status asaan`, `journalctl -u asaan -n 50` — usually a bad env value or a failed migration |
+| 502 from Caddy | `systemctl status asaan`, `journalctl -u asaan -n 50` — usually a bad env value or a failed migration |
+| Caddy serves HTTP but no certificate | DNS for the hostname does not point here yet, or port 80 is blocked; `journalctl -u caddy -n 50` shows the ACME error, and Caddy keeps retrying |
 | 400 Bad Request on every request | `DJANGO_ALLOWED_HOSTS` does not include the hostname you used |
 | Login works but the console immediately logs out | `DJANGO_SECURE_COOKIES=true` while still on plain HTTP, or a wrong `DJANGO_CSRF_TRUSTED_ORIGINS` |
 | PWA serves an old build | it should not: index.html and sw.js are `no-cache`, assets are hashed. If a device is stuck, use the app menu → *Clear cache & reload* |
-| Photos upload but do not display | permissions on `/var/lib/asaan/media` (must be readable by nginx) and the `/media/` alias in nginx |
+| Photos upload but do not display | permissions on `/var/lib/asaan/media` (must be readable by the `caddy` user) and the `/media/*` block in the Caddyfile |
 | Static files missing after deploy | `manage.py collectstatic` ran as the wrong user, or `/static/` alias points elsewhere |
 | "database is locked" | a long report at the same time as writes; retry, or set `POSTGRES_DB` and move to the PostgreSQL you already run |
 | `connection to server at "127.0.0.1" failed` | PostgreSQL role password or `pg_hba.conf`; test with `psql -h 127.0.0.1 -U asaan -d asaan` |

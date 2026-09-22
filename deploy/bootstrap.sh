@@ -10,7 +10,7 @@
 # else has a sensible default:
 #
 #   SITE_HOST      public hostname; defaults to <public-ip>.sslip.io
-#   EMAIL          Let's Encrypt account; when set, HTTPS is configured
+#   EMAIL          ACME contact address for Caddy (optional, recommended)
 #   DB             sqlite (default) or postgres
 #   APP_DIR        /opt/asaan
 #   APP_USER       asaan
@@ -52,13 +52,29 @@ fi
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates sqlite3 nginx python3-venv python3-pip ufw
-command -v certbot >/dev/null 2>&1 || apt-get install -y -qq certbot python3-certbot-nginx
+apt-get install -y -qq git curl ca-certificates gnupg sqlite3 python3-venv python3-pip ufw
+
+# Caddy from its official repository (newer than the distribution package).
+if ! command -v caddy >/dev/null 2>&1; then
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    > /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -qq
+  apt-get install -y -qq caddy
+fi
+
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v\([0-9]*\).*/\1/')" -lt 18 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y -qq nodejs
 fi
 if [ "$DB" = "postgres" ]; then apt-get install -y -qq postgresql postgresql-client; fi
+
+say "ports"
+port_busy() { ss -ltn 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { found=1 } END { exit !found }'; }
+if port_busy 80 || port_busy 443; then
+  die "ports 80 or 443 are already in use. Caddy needs both for certificates and HTTPS; on a box that already runs nginx, add Asaan as an nginx vhost instead (deploy/nginx.conf)."
+fi
 
 say "service account and directories"
 id -u "$APP_USER" >/dev/null 2>&1 || adduser --system --group --home "$APP_DIR" "$APP_USER"
@@ -123,19 +139,24 @@ say "systemd unit"
 sed -e "s|/opt/asaan|$APP_DIR|g" -e "s|/var/lib/asaan|$DATA_DIR|g" \
   "$APP_DIR/deploy/asaan.service" > /etc/systemd/system/asaan.service
 
-say "nginx site"
+say "caddy site"
+install -d /etc/caddy
 sed -e "s/asaan\.in/$SITE_HOST/g" \
     -e "s|/opt/asaan|$APP_DIR|g" \
     -e "s|/var/lib/asaan|$DATA_DIR|g" \
-    "$APP_DIR/deploy/nginx.conf" > /etc/nginx/sites-available/asaan
-ln -sf /etc/nginx/sites-available/asaan /etc/nginx/sites-enabled/asaan
-rm -f /etc/nginx/sites-enabled/default
-nginx -t
+    "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
+if [ -n "$EMAIL" ]; then
+  printf '{\n\temail %s\n}\n\n' "$EMAIL" > /etc/caddy/Caddyfile.tmp
+  cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.tmp
+  mv /etc/caddy/Caddyfile.tmp /etc/caddy/Caddyfile
+fi
+caddy validate --config /etc/caddy/Caddyfile
 
 if [ "$SKIP_FIREWALL" != "1" ]; then
   say "firewall"
   ufw allow 22/tcp >/dev/null 2>&1 || true
-  ufw allow 'Nginx Full' >/dev/null 2>&1 || true
+  ufw allow 80/tcp >/dev/null 2>&1 || true
+  ufw allow 443/tcp >/dev/null 2>&1 || true
   ufw --force enable >/dev/null 2>&1 || true
   echo "ufw allows 22, 80 and 443. Open the same in your cloud firewall (Lightsail: Networking -> IPv4 Firewall)."
 fi
@@ -145,23 +166,21 @@ systemctl daemon-reload
 systemctl enable asaan >/dev/null
 APP_DIR="$APP_DIR" APP_USER="$APP_USER" ENV_FILE="$ENV_FILE" sh "$APP_DIR/deploy/deploy.sh"
 
-if [ -n "$EMAIL" ]; then
-  say "https"
-  if certbot --nginx -d "$SITE_HOST" --non-interactive --agree-tos -m "$EMAIL" --redirect; then
-    sed -i 's/^DJANGO_SECURE_COOKIES=.*/DJANGO_SECURE_COOKIES=true/' "$ENV_FILE"
-    systemctl restart asaan
-    URL="https://$SITE_HOST"
-  else
-    echo "certbot failed (DNS not pointing here yet?). Re-run: certbot --nginx -d $SITE_HOST"
-    URL="http://$SITE_HOST"
-  fi
+say "https"
+systemctl enable caddy >/dev/null 2>&1 || true
+systemctl restart caddy
+if curl -fsS --max-time 5 "https://$SITE_HOST/healthz" >/dev/null 2>&1; then
+  sed -i 's/^DJANGO_SECURE_COOKIES=.*/DJANGO_SECURE_COOKIES=true/' "$ENV_FILE"
+  systemctl restart asaan
+  URL="https://$SITE_HOST"
+  echo "certificate issued for $SITE_HOST; secure cookies enabled"
 else
-  say "https"
-  echo "No EMAIL set, so HTTPS was skipped. Once DNS points at this server run:"
-  echo "  certbot --nginx -d $SITE_HOST"
+  URL="https://$SITE_HOST"
+  echo "Caddy could not get a certificate yet, usually because DNS for $SITE_HOST"
+  echo "does not point here. Caddy keeps retrying; once the record is live run:"
+  echo "  curl -fsS $URL/healthz"
   echo "  sed -i 's/^DJANGO_SECURE_COOKIES=.*/DJANGO_SECURE_COOKIES=true/' $ENV_FILE"
   echo "  systemctl restart asaan"
-  URL="http://$SITE_HOST"
 fi
 
 say "done"
