@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
             name="DistributorProfile",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("legal_name", models.CharField(default="Ordex Distributor", max_length=200)),
+                ("legal_name", models.CharField(default="Asaan Distributor", max_length=200)),
                 ("gstin", models.CharField(blank=True, max_length=15)),
                 ("address", models.TextField(blank=True)),
                 ("state", models.CharField(blank=True, max_length=100)),

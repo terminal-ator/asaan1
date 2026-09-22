@@ -1,4 +1,4 @@
-const CACHE = 'ordex-shell-v3'
+const CACHE = 'asaan-shell-v1'
 
 self.addEventListener('install', event => {
   self.skipWaiting()

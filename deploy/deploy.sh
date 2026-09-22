@@ -1,20 +1,20 @@
 #!/usr/bin/env sh
-# Deploy Ordex in place: pull, install, migrate, collect, build, reload, verify.
+# Deploy Asaan in place: pull, install, migrate, collect, build, reload, verify.
 #
 #   deploy/deploy.sh                    # deploy the configured branch
 #   TARGET=v1.2.0 deploy/deploy.sh      # deploy a tag (or an old commit) by hand
 #   SKIP_FRONTEND=1 deploy/deploy.sh    # when dist/ is shipped separately
 #
-# Run as root on the server, or as the ordex user if it owns the checkout.
+# Run as root on the server, or as the asaan user if it owns the checkout.
 set -eu
 
-APP_DIR="${APP_DIR:-/opt/ordex}"
-APP_USER="${APP_USER:-ordex}"
-ENV_FILE="${ENV_FILE:-/etc/ordex/ordex.env}"
+APP_DIR="${APP_DIR:-/opt/asaan}"
+APP_USER="${APP_USER:-asaan}"
+ENV_FILE="${ENV_FILE:-/etc/asaan/asaan.env}"
 BRANCH="${BRANCH:-main}"
 TARGET="${TARGET:-$BRANCH}"
-SERVICE="${SERVICE:-ordex}"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/ordex}"
+SERVICE="${SERVICE:-asaan}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/asaan}"
 PYTHON="$APP_DIR/django_api/.venv/bin/python"
 PIP="$APP_DIR/django_api/.venv/bin/pip"
 GUNICORN_PORT="$(sed -n 's/^GUNICORN_PORT=//p' "$ENV_FILE" | tail -1)"
@@ -31,13 +31,13 @@ PREVIOUS_REV="$(git rev-parse --short HEAD)"
 say "current revision $PREVIOUS_REV, deploying $TARGET"
 
 say "backing up the database before touching anything"
-if [ -x "$APP_DIR/deploy/backup-ordex.sh" ] || [ -f "$APP_DIR/deploy/backup-ordex.sh" ]; then
+if [ -x "$APP_DIR/deploy/backup-asaan.sh" ] || [ -f "$APP_DIR/deploy/backup-asaan.sh" ]; then
   ENV_FILE="$ENV_FILE" BACKUP_DIR="$BACKUP_DIR" \
-    sh "$APP_DIR/deploy/backup-ordex.sh" \
+    sh "$APP_DIR/deploy/backup-asaan.sh" \
     || { echo "Pre-deploy backup failed; aborting so the database stays untouched." >&2; exit 1; }
 else
   DATABASE_PATH="$(sed -n 's/^DATABASE_PATH=//p' "$ENV_FILE" | tail -1)"
-  [ -n "${DATABASE_PATH:-}" ] || DATABASE_PATH=/var/lib/ordex/ordex.db
+  [ -n "${DATABASE_PATH:-}" ] || DATABASE_PATH=/var/lib/asaan/asaan.db
   if [ -f "$DATABASE_PATH" ]; then
     mkdir -p "$BACKUP_DIR"
     sqlite3 "$DATABASE_PATH" ".backup '$BACKUP_DIR/pre-deploy-$(date +%F-%H%M).db'"
@@ -90,9 +90,9 @@ cat >&2 <<'EOF'
 Code rolled back, but migrations are forward-only. If the failure was caused by
 a schema change, restore the pre-deploy database backup:
 
-  systemctl stop ordex
-  cp /var/backups/ordex/pre-deploy-YYYY-MM-DD-HHMM.db /var/lib/ordex/ordex.db
-  systemctl start ordex
+  systemctl stop asaan
+  cp /var/backups/asaan/pre-deploy-YYYY-MM-DD-HHMM.db /var/lib/asaan/asaan.db
+  systemctl start asaan
 
 Then fix forward and deploy again.
 EOF

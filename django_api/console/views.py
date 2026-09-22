@@ -448,7 +448,7 @@ def _parse_ack_date(value):
 def einvoice_template(request):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
-        'attachment; filename="ordex-einvoice-portal-template.csv"'
+        'attachment; filename="asaan-einvoice-portal-template.csv"'
     )
     csv.writer(response).writerow(
         ["invoice_number", "irn", "ack_number", "ack_date", "qr_code_data"]
@@ -500,7 +500,7 @@ def export_orders(request):
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
-        'attachment; filename="ordex-orders.csv"'
+        'attachment; filename="asaan-orders.csv"'
     )
     writer = csv.writer(response)
     writer.writerow(
@@ -560,7 +560,7 @@ def export_order_items(request):
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
-        'attachment; filename="ordex-order-items.csv"'
+        'attachment; filename="asaan-order-items.csv"'
     )
     writer = csv.writer(response)
     writer.writerow(
@@ -1176,7 +1176,7 @@ def product_edit(request, product_id=None):
 def product_import_template(request):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
-        'attachment; filename="ordex-product-import-template.csv"'
+        'attachment; filename="asaan-product-import-template.csv"'
     )
     writer = csv.writer(response)
     writer.writerow(

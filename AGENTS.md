@@ -1,4 +1,4 @@
-# Ordex contributor guidance
+# Asaan contributor guidance
 
 ## Current phase
 

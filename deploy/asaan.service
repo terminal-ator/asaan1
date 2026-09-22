@@ -1,13 +1,13 @@
 [Unit]
-Description=Ordex API and console (Django)
+Description=Asaan API and console (Django)
 After=network.target
 
 [Service]
-User=ordex
-Group=ordex
-WorkingDirectory=/opt/ordex/django_api
-EnvironmentFile=/etc/ordex/ordex.env
-ExecStart=/opt/ordex/django_api/.venv/bin/gunicorn ordex.wsgi:application \
+User=asaan
+Group=asaan
+WorkingDirectory=/opt/asaan/django_api
+EnvironmentFile=/etc/asaan/asaan.env
+ExecStart=/opt/asaan/django_api/.venv/bin/gunicorn asaan.wsgi:application \
     --bind 127.0.0.1:${GUNICORN_PORT} \
     --workers 2 \
     --timeout 60 \
@@ -15,7 +15,7 @@ ExecStart=/opt/ordex/django_api/.venv/bin/gunicorn ordex.wsgi:application \
     --error-logfile - \
     --max-requests 1000 \
     --max-requests-jitter 100
-# `systemctl reload ordex` drains workers and starts fresh ones, so a deploy
+# `systemctl reload asaan` drains workers and starts fresh ones, so a deploy
 # does not drop in-flight requests.
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
@@ -23,7 +23,7 @@ RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=/var/lib/ordex
+ReadWritePaths=/var/lib/asaan
 
 [Install]
 WantedBy=multi-user.target

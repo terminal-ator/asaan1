@@ -22,16 +22,16 @@ type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string }
 type Shop = { storeName: string; customerName: string; mobile: string; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
 type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string }
 
-class OrdexDB extends Dexie {
+class AsaanDB extends Dexie {
   products!: EntityTable<Product, 'id'>
   cart!: EntityTable<{ id: 'current'; items: CartItem[] }, 'id'>
   orders!: EntityTable<LocalOrder, 'clientOrderId'>
   constructor() {
-    super('ordex')
+    super('asaan')
     this.version(1).stores({ products: 'id, sku, name, company, brand, category', cart: 'id', orders: 'clientOrderId, status, createdAt' })
   }
 }
-const db = new OrdexDB()
+const db = new AsaanDB()
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(paise / 100)
 const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `${apiURL}${product.imageUrl}` : product.imageUrl
 // A shop profile without a name or mobile is useless for billing, so treat it
@@ -46,7 +46,7 @@ async function clearCacheAndReload() {
 }
 
 function App() {
-  const [shop, setShop] = useState<Shop | null>(() => JSON.parse(localStorage.getItem('ordex-shop') || 'null'))
+  const [shop, setShop] = useState<Shop | null>(() => JSON.parse(localStorage.getItem('asaan-shop') || 'null'))
   const [products, setProducts] = useState<Product[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [query, setQuery] = useState('')
@@ -145,7 +145,7 @@ function App() {
       ? `${pending} order${pending === 1 ? '' : 's'} on this device have not been submitted yet and will be deleted. Log out anyway?`
       : 'Log out and remove this shop and its saved data from this device?'
     if (!window.confirm(warning)) return
-    localStorage.removeItem('ordex-shop')
+    localStorage.removeItem('asaan-shop')
     await Promise.all([db.products.clear(), db.cart.clear(), db.orders.clear()])
     window.location.reload()
   }
@@ -188,9 +188,9 @@ function App() {
   }, [cart, products])
   const newProducts = useMemo(() => [...products].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 8), [products])
 
-  if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('ordex-shop', JSON.stringify(saved)); setShop(saved) }} />
+  if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('asaan-shop', JSON.stringify(saved)); setShop(saved) }} />
   return <main className={screen === 'catalogue' ? 'catalogue' : undefined}>
-    <header><div className="header-brand"><span className="logo" aria-hidden="true">O</span><div><strong>Ordex</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
+    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
     {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} cart={cart} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'cart' && <Cart cart={cart} total={total} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
@@ -226,7 +226,7 @@ function Registration({ initial, onSave }: { initial?: Shop | null; onSave: (sho
     setShop(current => ({ ...current, ...changes }))
     if (error) setError('')
   }
-  return <main className="registration"><div className="brand"><span className="logo" aria-hidden="true">O</span>Ordex</div><h1>Set up your shop</h1><p>Save your details on this device to make future orders quick. They are included only when you submit an order.</p><form onSubmit={submit}><Field label="Store name" value={shop.storeName} onChange={value => update({ storeName: value })} required /><Field label="Contact name" value={shop.customerName ?? ''} onChange={value => update({ customerName: value })} /><Field label="Mobile number" type="tel" value={shop.mobile} onChange={value => update({ mobile: value })} required /><Field label="GSTIN (optional)" value={shop.gstin ?? ''} onChange={value => update({ gstin: value.toUpperCase().replace(/[^0-9A-Z]/g, '') })} maxLength={15} /><Field label="Address" value={shop.address ?? ''} onChange={value => update({ address: value })} /><section className="location-card"><div><b>Shop location <small>Optional</small></b><p>{locationState === 'saved' ? `Location saved (accurate to about ${shop.locationAccuracy} m)` : locationState === 'error' ? 'Location could not be shared. You can continue without it.' : 'Share your current location to help with delivery.'}</p></div><button type="button" className="location-button" onClick={shareLocation} disabled={locationState === 'loading'}>{locationState === 'loading' ? 'Finding…' : locationState === 'saved' ? 'Update' : 'Share location'}</button></section>{error && <p className="form-error">{error}</p>}<button className="primary">Open catalogue</button></form></main>
+  return <main className="registration"><div className="brand"><span className="logo" aria-hidden="true">A</span>Asaan</div><h1>Set up your shop</h1><p>Save your details on this device to make future orders quick. They are included only when you submit an order.</p><form onSubmit={submit}><Field label="Store name" value={shop.storeName} onChange={value => update({ storeName: value })} required /><Field label="Contact name" value={shop.customerName ?? ''} onChange={value => update({ customerName: value })} /><Field label="Mobile number" type="tel" value={shop.mobile} onChange={value => update({ mobile: value })} required /><Field label="GSTIN (optional)" value={shop.gstin ?? ''} onChange={value => update({ gstin: value.toUpperCase().replace(/[^0-9A-Z]/g, '') })} maxLength={15} /><Field label="Address" value={shop.address ?? ''} onChange={value => update({ address: value })} /><section className="location-card"><div><b>Shop location <small>Optional</small></b><p>{locationState === 'saved' ? `Location saved (accurate to about ${shop.locationAccuracy} m)` : locationState === 'error' ? 'Location could not be shared. You can continue without it.' : 'Share your current location to help with delivery.'}</p></div><button type="button" className="location-button" onClick={shareLocation} disabled={locationState === 'loading'}>{locationState === 'loading' ? 'Finding…' : locationState === 'saved' ? 'Update' : 'Share location'}</button></section>{error && <p className="form-error">{error}</p>}<button className="primary">Open catalogue</button></form></main>
 }
 
 function Field({ label, value, onChange, required = false, maxLength, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number; type?: string }) { return <label>{label}{required && <span className="required-mark"> *</span>}<input type={type} value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }

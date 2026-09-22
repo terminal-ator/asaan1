@@ -1,4 +1,4 @@
-# Ordex
+# Asaan
 
 Retailer ordering PWA plus a distributor console.
 
@@ -7,7 +7,7 @@ Retailer ordering PWA plus a distributor console.
 
 ## Current billing workflow
 
-Bills are raised by hand in Marg ERP. Ordex captures the order and prepares it for billing:
+Bills are raised by hand in Marg ERP. Asaan captures the order and prepares it for billing:
 
 1. A shop submits an order in the PWA. Totals are tentative; prices are recomputed server-side from the catalogue.
 2. Staff review it in the console (`/console/`), fix the customer GSTIN, billing address, or place of supply if needed, and print an **order slip** (`/console/orders/<id>/slip`) with prices for billing.
@@ -15,7 +15,7 @@ Bills are raised by hand in Marg ERP. Ordex captures the order and prepares it f
 4. The **Dispatch summary** covers the day's unassigned bills: it lists each bill and a consolidated **pick list** grouped by company and brand, with quantities and how many bills need each SKU.
 5. Orders going out together are grouped into a **loading**. The loading page prints the loading sheet, billing slips, or a set of dense **packing slips** — one price-free slip per bill with a tick box per line for the packing table.
 
-In-app invoice numbering, the stock ledger during dispatch, and e-invoice upload are **paused** until auto-billing from Ordex replaces the manual step. The related models and views are kept for that future work but are not linked from the console.
+In-app invoice numbering, the stock ledger during dispatch, and e-invoice upload are **paused** until auto-billing from Asaan replaces the manual step. The related models and views are kept for that future work but are not linked from the console.
 
 ## Run locally
 
@@ -78,7 +78,7 @@ The PWA sends the catalogue product's UUID as `productId`. The API validates the
 The full strategy, first-time server setup, backup/restore drill and troubleshooting live in [`deploy/README.md`](deploy/README.md). The short version:
 
 1. Build the PWA and Django static files: `npm run build`, `python manage.py collectstatic --noinput`.
-2. Copy `deploy/ordex.env.example` to `/etc/ordex/ordex.env` and fill it in.
-3. Install `deploy/ordex.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console) — see [`deploy/README.md`](deploy/README.md).
-4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-ordex.sh`. SQLite is the default; set `POSTGRES_DB` and friends in the env file to use PostgreSQL instead.
+2. Copy `deploy/asaan.env.example` to `/etc/asaan/asaan.env` and fill it in.
+3. Install `deploy/asaan.service` (gunicorn on `127.0.0.1:8123`, set by `GUNICORN_PORT`) and `deploy/nginx.conf` (serves `dist/`, `/static/`, `/media/` and proxies the API and console) — see [`deploy/README.md`](deploy/README.md).
+4. Deploy and roll back with `deploy/deploy.sh`; back up nightly with `deploy/backup-asaan.sh`. SQLite is the default; set `POSTGRES_DB` and friends in the env file to use PostgreSQL instead.
 5. Point an uptime check at `/healthz`.

@@ -235,7 +235,7 @@ class PurchaseReturnItem(models.Model):
 
 
 class DistributorProfile(models.Model):
-    legal_name = models.CharField(max_length=200, default="Ordex Distributor")
+    legal_name = models.CharField(max_length=200, default="Asaan Distributor")
     gstin = models.CharField(max_length=15, blank=True)
     address = models.TextField(blank=True)
     state = models.CharField(max_length=100, blank=True)
