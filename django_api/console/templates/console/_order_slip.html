@@ -1,0 +1,68 @@
+{% load console_tags %}
+<section class="slip-page mt-6 overflow-hidden rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+  <div class="flex flex-wrap justify-between gap-5 border-b border-slate-200 pb-5">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Order slip</p>
+      <h2 class="mt-1 text-xl font-bold">{{ slip.order.order_number }}</h2>
+      <p class="mt-1 text-sm text-slate-500">{{ slip.order.created_at|date:'d M Y, H:i' }} · {{ slip.order.get_status_display }}</p>
+    </div>
+    <div class="text-sm sm:text-right">
+      <p class="font-semibold">{{ profile.legal_name }}</p>
+      {% if profile.address %}<p class="mt-1 whitespace-pre-line text-slate-500">{{ profile.address }}</p>{% endif %}
+      <p class="text-slate-500">GSTIN: {{ profile.gstin|default:'Not configured' }}</p>
+    </div>
+  </div>
+
+  <div class="grid gap-4 border-b border-slate-200 py-5 text-sm sm:grid-cols-2">
+    <div>
+      <p class="font-semibold">Deliver to</p>
+      <p class="mt-1">{{ slip.order.shop.storeName }}</p>
+      <p class="text-slate-500">{{ slip.order.shop.customerName }}{% if slip.order.shop.customerName and slip.order.shop.mobile %} · {% endif %}{{ slip.order.shop.mobile }}</p>
+      <p class="whitespace-pre-line text-slate-500">{{ slip.order.billing_address|default:slip.order.shop.address }}</p>
+    </div>
+    <div>
+      <p class="font-semibold">Customer GSTIN</p>
+      <p class="mt-1 text-slate-500">{{ slip.order.customer_gstin|default:slip.order.shop.gstin|default:'Unregistered' }}</p>
+      <p class="mt-2 font-semibold">Place of supply</p>
+      <p class="mt-1 text-slate-500">{{ slip.order.place_of_supply|default:'—' }}</p>
+      {% if slip.order.notes %}
+      <p class="mt-2 font-semibold">Customer notes</p>
+      <p class="mt-1 whitespace-pre-line text-slate-500">{{ slip.order.notes }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <table class="mt-5 min-w-full text-left text-sm">
+    <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+      <tr>
+        <th class="py-3">Item / HSN</th>
+        <th class="px-3 py-3">Qty</th>
+        <th class="px-3 py-3">Rate</th>
+        <th class="px-3 py-3">GST</th>
+        <th class="py-3 text-right">Amount</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for line in slip.lines %}
+      <tr>
+        <td class="py-3">
+          <p class="font-semibold">{{ line.item.name }}</p>
+          <p class="text-xs text-slate-500">{{ line.item.sku }} · {{ line.item.unit }}{% if line.item.hsn_code %} · HSN {{ line.item.hsn_code }}{% endif %}</p>
+        </td>
+        <td class="px-3 py-3">{{ line.item.quantity }}</td>
+        <td class="px-3 py-3">₹{{ line.item.rate|rupees }}</td>
+        <td class="px-3 py-3">{{ line.item.gst_rate }}%</td>
+        <td class="py-3 text-right font-semibold">₹{{ line.total|rupees }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="mt-5 ml-auto max-w-xs space-y-2 text-sm">
+    <div class="flex justify-between"><span class="text-slate-500">Taxable subtotal</span><span>₹{{ slip.order.total|rupees }}</span></div>
+    <div class="flex justify-between"><span class="text-slate-500">GST (indicative)</span><span>₹{{ slip.tax_total|rupees }}</span></div>
+    <div class="flex justify-between border-t border-slate-200 pt-2 text-base font-bold"><span>Tentative total</span><span>₹{{ slip.grand_total|rupees }}</span></div>
+  </div>
+
+  <p class="mt-5 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">Tentative order. Final rates, schemes, tax and availability are confirmed on the Marg bill.</p>
+</section>

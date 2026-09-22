@@ -33,6 +33,16 @@ urlpatterns = [
     ),
     path("orders/export.csv", views.export_orders, name="console-orders-export"),
     path(
+        "orders/export-items.csv",
+        views.export_order_items,
+        name="console-order-items-export",
+    ),
+    path(
+        "orders/<uuid:order_id>/slip",
+        views.order_slip,
+        name="console-order-slip",
+    ),
+    path(
         "dispatch-summary",
         views.dispatch_summary,
         name="console-dispatch-summary",

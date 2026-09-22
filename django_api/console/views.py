@@ -1,6 +1,5 @@
 import csv
 import io
-import json
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
@@ -23,22 +22,21 @@ from catalogue.models import (
     Category,
     Company,
     DistributorProfile,
-    InvoiceSequence,
     Loading,
     Order,
     OrderItem,
     Product,
     Purchase,
+    PurchaseItem,
     PurchaseReturn,
     SalesReturn,
     StockLedger,
     Shop,
-    Warehouse,
     HSN,
 )
 
 from .forms import ProductForm
-from .order_forms import OrderInvoiceForm
+from .order_forms import OrderBillingForm
 from .shop_forms import ShopForm
 from .profile_forms import DistributorProfileForm
 from .purchase_forms import PurchaseForm, PurchaseItemFormSet
@@ -152,10 +150,10 @@ def order_detail(request, order_id):
     )
 
 
-    form = OrderInvoiceForm(request.POST or None, instance=order)
+    form = OrderBillingForm(request.POST or None, instance=order)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Invoice details saved.")
+        messages.success(request, "Billing details saved.")
         return redirect("console-order-detail", order_id=order.id)
 
     tax_total = _order_tax(order)
@@ -168,6 +166,43 @@ def order_detail(request, order_id):
             "tax_total": tax_total,
             "grand_total": order.total + tax_total,
             "shop_gstin": order.shop.get("gstin", ""),
+        },
+    )
+
+
+def _slip_lines(order):
+    """Per-line GST working copied onto order slips and loading sheets."""
+    lines = []
+    for item in order.items.all():
+        tax = round(item.line_total * item.gst_rate / Decimal("100"))
+        lines.append({"item": item, "tax": tax, "total": item.line_total + tax})
+    return lines
+
+
+@login_required
+def order_slip(request, order_id):
+    """Printable pick/billing slip. Carries no invoice number: Marg owns those."""
+    order = get_object_or_404(
+        Order.objects.prefetch_related("items"),
+        pk=order_id,
+    )
+    profile = DistributorProfile.objects.first() or DistributorProfile()
+    lines = _slip_lines(order)
+    tax_total = sum(line["tax"] for line in lines)
+    return render(
+        request,
+        "console/order_slip.html",
+        {
+            "order": order,
+            "slips": [
+                {
+                    "order": order,
+                    "lines": lines,
+                    "tax_total": tax_total,
+                    "grand_total": order.total + tax_total,
+                }
+            ],
+            "profile": profile,
         },
     )
 
@@ -444,6 +479,74 @@ def export_orders(request):
 
 
 @login_required
+def export_order_items(request):
+    """Flat line-level CSV, one row per SKU, for keying the day's bills into Marg."""
+    status = request.GET.get("status", "").strip()
+    start = request.GET.get("from", "").strip()
+    end = request.GET.get("to", "").strip()
+    orders = Order.objects.prefetch_related("items").all()
+    if status in dict(Order.STATUS_CHOICES):
+        orders = orders.filter(status=status)
+    if start:
+        orders = orders.filter(created_at__date__gte=start)
+    if end:
+        orders = orders.filter(created_at__date__lte=end)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        'attachment; filename="ordex-order-items.csv"'
+    )
+    writer = csv.writer(response)
+    writer.writerow(
+        [
+            "order_number",
+            "created_at",
+            "status",
+            "store_name",
+            "mobile",
+            "customer_gstin",
+            "billing_address",
+            "place_of_supply",
+            "sku",
+            "product_name",
+            "hsn_code",
+            "unit",
+            "quantity",
+            "rate_paise",
+            "line_total_paise",
+            "gst_rate",
+            "gst_value_paise",
+        ]
+    )
+    for order in orders:
+        buyer_gstin = order.customer_gstin or order.shop.get("gstin", "")
+        buyer_address = order.billing_address or order.shop.get("address", "")
+        for item in order.items.all():
+            writer.writerow(
+                [
+                    order.order_number,
+                    order.created_at.isoformat(),
+                    order.get_status_display(),
+                    order.shop.get("storeName", ""),
+                    order.shop.get("mobile", ""),
+                    buyer_gstin,
+                    buyer_address,
+                    order.place_of_supply,
+                    item.sku,
+                    item.name,
+                    item.hsn_code,
+                    item.unit,
+                    item.quantity,
+                    item.rate,
+                    item.line_total,
+                    item.gst_rate,
+                    round(item.line_total * item.gst_rate / Decimal("100")),
+                ]
+            )
+    return response
+
+
+@login_required
 def dispatch_summary(request):
     eligible = Order.objects.prefetch_related("items").filter(
         status__in=["received", "processing"], loading__isnull=True
@@ -469,66 +572,11 @@ def dispatch_summary(request):
                 )
                 return redirect("console-dispatch-summary")
             if request.POST.get("action") == "convert":
-                if any(order.invoice_number for order in selected):
-                    messages.error(
-                        request,
-                        "One or more selected bills already has an invoice number.",
-                    )
-                    return redirect("console-dispatch-summary")
-                missing_products = [
-                    line.sku
-                    for order in selected
-                    for line in order.items.all()
-                    if not Product.objects.filter(pk=line.product_id_snapshot).exists()
-                ]
-                if missing_products:
-                    messages.error(request, "Catalogue items missing for: " + ", ".join(sorted(set(missing_products))))
-                    return redirect("console-dispatch-summary")
-                profile = DistributorProfile.objects.first() or DistributorProfile()
-                warehouse = Warehouse.objects.filter(active=True).order_by("id").first()
-                if warehouse is None:
-                    messages.error(request, "Create an active warehouse before converting bills to invoices.")
-                    return redirect("console-dispatch-summary")
-                today = timezone.localdate()
-                financial_year = _financial_year(today)
-                sequence, _ = InvoiceSequence.objects.select_for_update().get_or_create(
-                    prefix=profile.invoice_prefix,
-                    financial_year=financial_year,
-                )
-                next_number = sequence.next_number
-                for order in sorted(selected, key=lambda item: item.created_at):
-                    order.invoice_number = (
-                        f"{profile.invoice_prefix}/{financial_year}/{next_number:05d}"
-                    )
-                    order.invoice_date = today
-                    order.seller_snapshot = {
-                        "legalName": profile.legal_name,
-                        "gstin": profile.gstin,
-                        "address": profile.address,
-                        "state": profile.state,
-                        "invoicePrefix": profile.invoice_prefix,
-                    }
-                    order.save(update_fields=["invoice_number", "invoice_date", "seller_snapshot"])
-                    for line in order.items.all():
-                        product = Product.objects.filter(pk=line.product_id_snapshot).first()
-                        StockLedger.objects.get_or_create(
-                            warehouse=warehouse,
-                            product=product,
-                            movement_type="sale",
-                            reference_type="order",
-                            reference_id=str(order.id),
-                            defaults={
-                                "quantity_delta": -line.quantity,
-                                "unit_cost": line.rate,
-                                "notes": f"Invoice {order.invoice_number}",
-                            },
-                        )
-                    next_number += 1
-                sequence.next_number = next_number
-                sequence.save(update_fields=["next_number"])
-                messages.success(
+                # Invoice conversion and stock posting are paused: bills are
+                # raised by hand in Marg. Loading sheets remain available.
+                messages.error(
                     request,
-                    f"{len(selected)} bills converted to invoices.",
+                    "Invoice conversion is paused while billing happens in Marg.",
                 )
                 return redirect("console-dispatch-summary")
             loading = Loading.objects.create(
@@ -569,11 +617,11 @@ def loading_detail(request, loading_id):
         Loading.objects.prefetch_related("orders__items"),
         pk=loading_id,
     )
+    orders = list(loading.orders.all())
     items = {}
     profile = DistributorProfile.objects.first() or DistributorProfile()
-    invoices = []
-    for order in loading.orders.all():
-        invoice_lines = []
+    slips = []
+    for order in orders:
         for item in order.items.all():
             key = (item.sku, item.name, item.unit)
             row = items.setdefault(
@@ -581,25 +629,25 @@ def loading_detail(request, loading_id):
                 {"sku": item.sku, "name": item.name, "unit": item.unit, "quantity": 0},
             )
             row["quantity"] += item.quantity
-            tax = round(item.line_total * item.gst_rate / Decimal("100"))
-            invoice_lines.append({"item": item, "tax": tax, "total": item.line_total + tax})
-        invoices.append({
-            "order": order,
-            "number": order.invoice_number or f"{profile.invoice_prefix}/{_financial_year(order.created_at.date())}/{order.order_number}",
-            "lines": invoice_lines,
-            "tax": sum(line["tax"] for line in invoice_lines),
-            "grand": order.total + sum(line["tax"] for line in invoice_lines),
-        })
+        lines = _slip_lines(order)
+        slips.append(
+            {
+                "order": order,
+                "lines": lines,
+                "tax_total": sum(line["tax"] for line in lines),
+                "grand_total": sum(line["total"] for line in lines),
+            }
+        )
 
     return render(
         request,
         "console/loading_detail.html",
         {
             "loading": loading,
-            "orders": loading.orders.all(),
+            "orders": orders,
             "items": sorted(items.values(), key=lambda row: row["name"]),
             "profile": profile,
-            "invoices": invoices,
+            "slips": slips,
         },
     )
 
@@ -665,18 +713,20 @@ def return_note(request, kind, return_id):
 def gst_report(request):
     start = request.GET.get("from", "")
     end = request.GET.get("to", "")
-    orders = Order.objects.filter(invoice_number__gt="")
+    # Invoicing is paused while bills are raised in Marg, so non-cancelled
+    # orders stand in for issued invoices.
+    orders = Order.objects.exclude(status="cancelled")
     purchases_qs = Purchase.objects.filter(status="posted")
     if start:
-        orders = orders.filter(invoice_date__gte=start)
+        orders = orders.filter(created_at__date__gte=start)
         purchases_qs = purchases_qs.filter(created_at__date__gte=start)
     if end:
-        orders = orders.filter(invoice_date__lte=end)
+        orders = orders.filter(created_at__date__lte=end)
         purchases_qs = purchases_qs.filter(created_at__date__lte=end)
-    sales = list(orders.values("invoice_number", "total"))
+    sales = list(orders.values("order_number", "total"))
     purchases = list(purchases_qs.values("purchase_number", "taxable_total", "gst_total"))
     sales_taxable = sum(row["total"] for row in sales)
-    sales_gst = sum(round(item.line_total * item.gst_rate / Decimal("100")) for item in OrderItem.objects.filter(order__invoice_number__gt=""))
+    sales_gst = sum(round(item.line_total * item.gst_rate / Decimal("100")) for item in OrderItem.objects.filter(order__in=orders))
     hsn_rows, rate_rows = {}, {}
     for item in OrderItem.objects.filter(order__in=orders):
         key = item.hsn_code or "Unspecified"; rate = str(item.gst_rate)

@@ -1,13 +1,16 @@
 [Unit]
-Description=Ordex API
+Description=Ordex API and console (Django)
 After=network.target
 
 [Service]
 User=ordex
 Group=ordex
-WorkingDirectory=/opt/ordex
+WorkingDirectory=/opt/ordex/django_api
 EnvironmentFile=/etc/ordex/ordex.env
-ExecStart=/opt/ordex/ordex
+ExecStart=/opt/ordex/django_api/.venv/bin/gunicorn ordex.wsgi:application \
+    --bind 127.0.0.1:8081 \
+    --workers 2 \
+    --timeout 60
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

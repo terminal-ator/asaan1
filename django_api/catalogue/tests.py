@@ -64,3 +64,19 @@ class OrderApiTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json()["duplicate"])
         self.assertEqual(Order.objects.count(), 1)
+
+    def test_gstin_fills_customer_gstin_and_place_of_supply(self):
+        payload = self.payload()
+        payload["shop"] = {
+            "storeName": "Test shop",
+            "mobile": "9999999999",
+            "gstin": "27abcde1234f1z5",
+        }
+        response = self.client.post(
+            "/api/orders", data=json.dumps(payload), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get()
+        self.assertEqual(order.customer_gstin, "27abcde1234f1z5")
+        self.assertEqual(order.place_of_supply, "Maharashtra")
+        self.assertEqual(order.shop_record.gstin, "27abcde1234f1z5")

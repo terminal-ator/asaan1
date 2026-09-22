@@ -1,8 +1,13 @@
 ordex.db
 *.db-journal
 .env
+.env.local
 node_modules
 dist
 django_api/.venv
 django_api/db.sqlite3
 django_api/media
+django_api/staticfiles
+*.tsbuildinfo
+__pycache__/
+*.pyc

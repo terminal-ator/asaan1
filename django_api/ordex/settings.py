@@ -9,6 +9,13 @@ MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware','django.middleware.securit
 ROOT_URLCONF='ordex.urls'; WSGI_APPLICATION='ordex.wsgi.application'
 TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
 DATABASES={'default':{'ENGINE':'django.db.backends.sqlite3','NAME':os.getenv('DATABASE_PATH',str(BASE_DIR/'db.sqlite3'))}}
-LANGUAGE_CODE='en-in'; TIME_ZONE='Asia/Kolkata'; USE_I18N=True; USE_TZ=True; STATIC_URL='static/'; MEDIA_URL='/media/'; MEDIA_ROOT=Path(os.getenv('MEDIA_ROOT',str(BASE_DIR/'media'))); DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
+LANGUAGE_CODE='en-in'; TIME_ZONE='Asia/Kolkata'; USE_I18N=True; USE_TZ=True; STATIC_URL='static/'; STATIC_ROOT=BASE_DIR/'staticfiles'; MEDIA_URL='/media/'; MEDIA_ROOT=Path(os.getenv('MEDIA_ROOT',str(BASE_DIR/'media'))); DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS=os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',')
+CSRF_TRUSTED_ORIGINS=[origin for origin in os.getenv('DJANGO_CSRF_TRUSTED_ORIGINS','').split(',') if origin]
 LOGIN_URL='/admin/login/'
+LOGIN_REDIRECT_URL='/console/'
+# TLS terminates at nginx; trust its forwarded protocol header when present.
+SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
+# Enable only when the console is served over HTTPS.
+SESSION_COOKIE_SECURE=os.getenv('DJANGO_SECURE_COOKIES','false').lower()=='true'
+CSRF_COOKIE_SECURE=SESSION_COOKIE_SECURE

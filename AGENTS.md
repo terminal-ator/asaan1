@@ -1,5 +1,14 @@
 # Ordex contributor guidance
 
+## Current phase
+
+- The PWA captures orders; staff bill them by hand in Marg ERP.
+- The console prepares printed order slips and line-item CSV exports. It must
+  not assign invoice numbers or post dispatch stock until auto-billing is built.
+- `OrderInvoiceForm`, `invoice_detail`, `invoice_json`, `invoice_excel`, and
+  `einvoice_upload` are parked for that future phase: keep the code and models,
+  but do not link them from the console UI.
+
 ## Forms and console UI
 
 - Always use a tabbed interface for long create/edit forms.

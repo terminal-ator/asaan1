@@ -9,6 +9,52 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import Order, OrderItem, Product, Shop
 
 
+# The first two digits of a GSTIN are the state code. Deriving the place of
+# supply here saves the billing desk from picking a state for every order.
+GST_STATE_CODES = {
+    "01": "Jammu & Kashmir",
+    "02": "Himachal Pradesh",
+    "03": "Punjab",
+    "04": "Chandigarh",
+    "05": "Uttarakhand",
+    "06": "Haryana",
+    "07": "Delhi",
+    "08": "Rajasthan",
+    "09": "Uttar Pradesh",
+    "10": "Bihar",
+    "11": "Sikkim",
+    "12": "Arunachal Pradesh",
+    "13": "Nagaland",
+    "14": "Manipur",
+    "15": "Mizoram",
+    "16": "Tripura",
+    "17": "Meghalaya",
+    "18": "Assam",
+    "19": "West Bengal",
+    "20": "Jharkhand",
+    "21": "Odisha",
+    "22": "Chhattisgarh",
+    "23": "Madhya Pradesh",
+    "24": "Gujarat",
+    "26": "Dadra & Nagar Haveli and Daman & Diu",
+    "27": "Maharashtra",
+    "29": "Karnataka",
+    "30": "Goa",
+    "31": "Lakshadweep",
+    "32": "Kerala",
+    "33": "Tamil Nadu",
+    "34": "Puducherry",
+    "35": "Andaman & Nicobar Islands",
+    "36": "Telangana",
+    "37": "Andhra Pradesh",
+    "38": "Ladakh",
+}
+
+
+def _place_of_supply(gstin):
+    return GST_STATE_CODES.get((gstin or "").strip()[:2], "")
+
+
 @require_GET
 def catalogue(request):
     products = Product.objects.filter(active=True).select_related(
@@ -108,7 +154,8 @@ def create_order(request):
                     "customer_name": shop_data.get("customerName", ""),
                     "gstin": shop_data.get("gstin", ""),
                     "address": shop_data.get("address", ""),
-                    "state": shop_data.get("state", ""),
+                    "state": shop_data.get("state", "")
+                    or _place_of_supply(shop_data.get("gstin", "")),
                     "latitude": shop_data.get("latitude"),
                     "longitude": shop_data.get("longitude"),
                     "location_accuracy": shop_data.get("locationAccuracy"),
@@ -122,8 +169,10 @@ def create_order(request):
                 notes=data.get("notes", "") if isinstance(data.get("notes", ""), str) else "",
                 total=total,
                 customer_gstin=shop_data.get("gstin", ""),
-                billing_address=shop_data.get("billingAddress") or shop_data.get("address", ""),
-                place_of_supply=shop_data.get("state", ""),
+                billing_address=shop_data.get("billingAddress")
+                or shop_data.get("address", ""),
+                place_of_supply=shop_data.get("state", "")
+                or _place_of_supply(shop_data.get("gstin", "")),
             )
             OrderItem.objects.bulk_create(
                 [
