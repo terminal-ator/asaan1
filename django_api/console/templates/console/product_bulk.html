@@ -40,6 +40,7 @@
               <th class="px-3 py-3 font-semibold">Rate (₹)</th>
               <th class="px-3 py-3 font-semibold">MRP (₹)</th>
               <th class="px-3 py-3 font-semibold">GST %</th>
+              <th class="px-3 py-3 font-semibold">Scheme %</th>
               <th class="px-3 py-3 font-semibold">Active</th>
             </tr>
           </thead>
@@ -55,6 +56,7 @@
               <td class="px-3 py-2">{{ form.rate }}{% for error in form.rate.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}</td>
               <td class="px-3 py-2">{{ form.mrp }}{% for error in form.mrp.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}</td>
               <td class="px-3 py-2">{{ form.gst_rate }}{% for error in form.gst_rate.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}</td>
+              <td class="px-3 py-2">{{ form.scheme_percent }}{% for error in form.scheme_percent.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}</td>
               <td class="px-3 py-2">
                 <label class="inline-flex items-center gap-2">{{ form.active }}<span class="text-xs font-semibold text-slate-600">In catalogue</span></label>
                 {% for error in form.active.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}

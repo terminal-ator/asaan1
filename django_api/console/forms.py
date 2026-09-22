@@ -78,6 +78,7 @@ class ProductForm(forms.ModelForm):
             "rate",
             "mrp",
             "gst_rate",
+            "scheme_percent",
             "image",
             "image_url",
             "active",
@@ -109,7 +110,7 @@ class ProductBulkForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["rate", "mrp", "gst_rate", "active"]
+        fields = ["rate", "mrp", "gst_rate", "scheme_percent", "active"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

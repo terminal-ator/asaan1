@@ -581,6 +581,7 @@ def export_order_items(request):
             "rate_paise",
             "line_total_paise",
             "gst_rate",
+            "scheme_percent",
             "gst_value_paise",
         ]
     )
@@ -606,6 +607,7 @@ def export_order_items(request):
                     item.rate,
                     item.line_total,
                     item.gst_rate,
+                    item.scheme_percent,
                     round(item.line_total * item.gst_rate / Decimal("100")),
                 ]
             )
@@ -1191,6 +1193,7 @@ def product_import_template(request):
             "sale_rate",
             "mrp",
             "gst_rate",
+            "scheme_percent",
             "image_url",
             "active",
         ]
@@ -1262,6 +1265,7 @@ def product_import(request):
                     sale_rate = round(Decimal(row["sale_rate"]) * 100)
                     mrp = round(Decimal(row["mrp"]) * 100)
                     gst_rate = Decimal(row.get("gst_rate") or "0")
+                    scheme_percent = Decimal(row.get("scheme_percent") or "0")
                 except (InvalidOperation, TypeError):
                     raise ValueError(
                         f"Row {row_number}: sale_rate and mrp must be numbers."
@@ -1270,6 +1274,10 @@ def product_import(request):
                 if sale_rate < 0 or mrp < 0 or gst_rate < 0 or gst_rate > 100:
                     raise ValueError(
                         f"Row {row_number}: prices must be positive and GST must be between 0 and 100."
+                    )
+                if scheme_percent < 0 or scheme_percent > 100:
+                    raise ValueError(
+                        f"Row {row_number}: scheme_percent must be between 0 and 100."
                     )
 
                 Product.objects.update_or_create(
@@ -1292,6 +1300,7 @@ def product_import(request):
                         "rate": sale_rate,
                         "mrp": mrp,
                         "gst_rate": gst_rate,
+                        "scheme_percent": scheme_percent,
                         "image_url": row.get("image_url", ""),
                         "active": row.get("active", "true").lower()
                         not in {"false", "0", "no"},

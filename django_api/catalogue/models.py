@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -276,6 +277,13 @@ class Product(models.Model):
     rate = models.BigIntegerField()
     mrp = models.BigIntegerField()
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    scheme_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Trade scheme shown to shops, e.g. 10 for 10% off. Applied on the Marg bill.",
+    )
     image = models.ImageField(upload_to="products/", blank=True)
     image_url = models.URLField(blank=True)
     active = models.BooleanField(default=True)
@@ -349,4 +357,5 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     rate = models.BigIntegerField()
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    scheme_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     line_total = models.BigIntegerField()

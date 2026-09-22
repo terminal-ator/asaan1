@@ -47,7 +47,7 @@
       <tr>
         <td class="py-3">
           <p class="font-semibold">{{ line.item.name }}</p>
-          <p class="text-xs text-slate-500">{{ line.item.sku }} · {{ line.item.unit }}{% if line.item.hsn_code %} · HSN {{ line.item.hsn_code }}{% endif %}</p>
+          <p class="text-xs text-slate-500">{{ line.item.sku }} · {{ line.item.unit }}{% if line.item.hsn_code %} · HSN {{ line.item.hsn_code }}{% endif %}{% if line.item.scheme_percent %} · Scheme {{ line.item.scheme_percent }}%{% endif %}</p>
         </td>
         <td class="px-3 py-3">{{ line.item.quantity }}</td>
         <td class="px-3 py-3">₹{{ line.item.rate|rupees }}</td>

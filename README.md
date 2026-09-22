@@ -44,7 +44,9 @@ Set `VITE_API_URL` only when the PWA and API are on different origins.
 
 ## Bulk editing
 
-Products and Customers each have a **Bulk edit** sheet (`/console/products/bulk`, `/console/shops/bulk`) for updating many rows at once: rates and MRP in rupees, GST %, availability, and shop contact/GST details. Each sheet is paginated at 100 rows, filtered by the same search as the list pages, saves all rows together, shows inline errors, flags unsaved changes before leaving, and supports Enter-to-move-down plus Ctrl/⌘+S to save.
+Products and Customers each have a **Bulk edit** sheet (`/console/products/bulk`, `/console/shops/bulk`) for updating many rows at once: rates and MRP in rupees, GST %, scheme %, availability, and shop contact/GST details. Each sheet is paginated at 100 rows, filtered by the same search as the list pages, saves all rows together, shows inline errors, flags unsaved changes before leaving, and supports Enter-to-move-down plus Ctrl/⌘+S to save.
+
+A product's **scheme %** is a trade scheme shown to shops as a badge in the PWA and printed on order slips, packing slips and the items CSV; the Marg bill remains the final word on whether it applies. Set it on the product form, in the bulk sheet, or with the optional `scheme_percent` import column.
 
 ## Endpoints
 

@@ -81,6 +81,21 @@ class OrderApiTests(TestCase):
         self.assertEqual(order.place_of_supply, "Maharashtra")
         self.assertEqual(order.shop_record.gstin, "27abcde1234f1z5")
 
+    def test_catalogue_includes_scheme_percent(self):
+        self.product.scheme_percent = "10.00"
+        self.product.save(update_fields=["scheme_percent"])
+        response = self.client.get("/api/catalogue")
+        self.assertEqual(response.json()["products"][0]["schemePercent"], "10.00")
+
+    def test_order_snapshots_the_scheme(self):
+        self.product.scheme_percent = "7.50"
+        self.product.save(update_fields=["scheme_percent"])
+        response = self.client.post(
+            "/api/orders", data=json.dumps(self.payload()), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(str(OrderItem.objects.get().scheme_percent), "7.50")
+
     def test_shop_name_and_mobile_are_required(self):
         for shop in (
             {"storeName": "   ", "mobile": "9999999999"},

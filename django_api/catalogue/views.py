@@ -77,6 +77,7 @@ def catalogue(request):
                     "rate": product.rate,
                     "mrp": product.mrp,
                     "gstRate": str(product.gst_rate),
+                    "schemePercent": str(product.scheme_percent),
                     "imageUrl": product.image.url if product.image else product.image_url,
                     "updatedAt": product.updated_at.isoformat(),
                     "createdAt": product.created_at.isoformat(),
@@ -186,6 +187,7 @@ def create_order(request):
                         quantity=quantity,
                         rate=product.rate,
                         gst_rate=product.gst_rate,
+                        scheme_percent=product.scheme_percent,
                         line_total=line_total,
                     )
                     for product, quantity, line_total in accepted

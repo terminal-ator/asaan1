@@ -26,7 +26,7 @@
       <tr class="border-b border-slate-100 last:border-0">
         <td class="py-[3px] pr-1 text-slate-400">☐</td>
         <td class="py-[3px] pr-2 font-semibold">{{ line.item.name }}</td>
-        <td class="py-[3px] pr-2 text-slate-500">{{ line.item.sku }}</td>
+        <td class="py-[3px] pr-2 text-slate-500">{{ line.item.sku }}{% if line.item.scheme_percent %} · {{ line.item.scheme_percent }}% scheme{% endif %}</td>
         <td class="whitespace-nowrap py-[3px] text-right font-bold">{{ line.item.quantity }} {{ line.item.unit }}</td>
       </tr>
       {% endfor %}

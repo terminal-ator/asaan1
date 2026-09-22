@@ -2,7 +2,10 @@ import csv
 import io
 import uuid
 
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
@@ -93,6 +96,7 @@ class ConsoleOrderFlowTests(TestCase):
                 "form-0-rate": "123.45",
                 "form-0-mrp": "150.00",
                 "form-0-gst_rate": "12.00",
+                "form-0-scheme_percent": "7.50",
                 "form-0-active": "on",
             },
         )
@@ -101,6 +105,31 @@ class ConsoleOrderFlowTests(TestCase):
         self.assertEqual(self.product.rate, 12345)
         self.assertEqual(self.product.mrp, 15000)
         self.assertEqual(str(self.product.gst_rate), "12.00")
+        self.assertEqual(str(self.product.scheme_percent), "7.50")
+
+    def test_product_import_reads_the_scheme_column(self):
+        self.client.force_login(self.user)
+        body = (
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,gst_rate,scheme_percent\n"
+            "SKU-9,Imported item,Imp Co,Imp Brand,Snacks,Box of 12,box,50.00,60.00,18,7.5\n"
+        )
+        upload = SimpleUploadedFile("items.csv", body.encode(), content_type="text/csv")
+        response = self.client.post(reverse("console-product-import"), {"file": upload})
+        self.assertEqual(response.status_code, 302)
+        imported = Product.objects.get(sku="SKU-9")
+        self.assertEqual(imported.rate, 5000)
+        self.assertEqual(imported.scheme_percent, Decimal("7.5"))
+
+    def test_product_import_rejects_a_scheme_above_100(self):
+        self.client.force_login(self.user)
+        body = (
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,scheme_percent\n"
+            "SKU-9,Bad scheme,Imp Co,Imp Brand,Snacks,Box of 12,box,50.00,60.00,120\n"
+        )
+        upload = SimpleUploadedFile("items.csv", body.encode(), content_type="text/csv")
+        response = self.client.post(reverse("console-product-import"), {"file": upload})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Product.objects.filter(sku="SKU-9").exists())
 
     def test_product_bulk_sheet_keeps_previous_values_when_a_row_is_invalid(self):
         self.client.force_login(self.user)
