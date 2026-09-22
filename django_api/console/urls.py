@@ -43,6 +43,11 @@ urlpatterns = [
         name="console-order-slip",
     ),
     path(
+        "orders/<uuid:order_id>/packing-slip",
+        views.order_packing_slip,
+        name="console-order-packing-slip",
+    ),
+    path(
         "dispatch-summary",
         views.dispatch_summary,
         name="console-dispatch-summary",
@@ -51,6 +56,11 @@ urlpatterns = [
         "loadings/<uuid:loading_id>",
         views.loading_detail,
         name="console-loading-detail",
+    ),
+    path(
+        "loadings/<uuid:loading_id>/packing-slips",
+        views.loading_packing_slips,
+        name="console-loading-packing-slips",
     ),
     path("products", views.products, name="console-products"),
     path("inventory", views.inventory, name="console-inventory"),

@@ -170,39 +170,101 @@ def order_detail(request, order_id):
     )
 
 
-def _slip_lines(order):
-    """Per-line GST working copied onto order slips and loading sheets."""
+def _slip(order):
+    """Per-line GST working plus totals for slips and loading sheets."""
     lines = []
     for item in order.items.all():
         tax = round(item.line_total * item.gst_rate / Decimal("100"))
         lines.append({"item": item, "tax": tax, "total": item.line_total + tax})
-    return lines
+    return {
+        "order": order,
+        "lines": lines,
+        "units": sum(line["item"].quantity for line in lines),
+        "tax_total": sum(line["tax"] for line in lines),
+        "grand_total": sum(line["total"] for line in lines),
+    }
+
+
+def _consolidated_items(orders):
+    """Pick-list rows across orders, grouped the way the warehouse walks it."""
+    rows = {}
+    for order in orders:
+        for item in order.items.all():
+            key = (item.sku, item.name, item.unit)
+            row = rows.setdefault(
+                key,
+                {
+                    "sku": item.sku,
+                    "name": item.name,
+                    "unit": item.unit,
+                    "quantity": 0,
+                    "bills": 0,
+                    "product_id": item.product_id_snapshot,
+                },
+            )
+            row["quantity"] += item.quantity
+            row["bills"] += 1
+    products = (
+        Product.objects.select_related("company", "brand").in_bulk(
+            {row["product_id"] for row in rows.values()}
+        )
+        if rows
+        else {}
+    )
+    for row in rows.values():
+        product = products.get(row.pop("product_id"))
+        row["company"] = product.company.name if product else ""
+        row["brand"] = product.brand.name if product else ""
+    return sorted(
+        rows.values(),
+        key=lambda row: (row["company"], row["brand"], row["name"]),
+    )
 
 
 @login_required
 def order_slip(request, order_id):
-    """Printable pick/billing slip. Carries no invoice number: Marg owns those."""
+    """Printable billing slip. Carries no invoice number: Marg owns those."""
     order = get_object_or_404(
         Order.objects.prefetch_related("items"),
         pk=order_id,
     )
     profile = DistributorProfile.objects.first() or DistributorProfile()
-    lines = _slip_lines(order)
-    tax_total = sum(line["tax"] for line in lines)
     return render(
         request,
         "console/order_slip.html",
+        {"order": order, "slips": [_slip(order)], "profile": profile},
+    )
+
+
+@login_required
+def order_packing_slip(request, order_id):
+    """Dense no-prices packing slip for a single bill."""
+    order = get_object_or_404(
+        Order.objects.prefetch_related("items"),
+        pk=order_id,
+    )
+    return render(
+        request,
+        "console/packing_slip.html",
+        {"order": order, "slips": [_slip(order)]},
+    )
+
+
+@login_required
+def loading_packing_slips(request, loading_id):
+    """One dense packing slip per bill in the loading."""
+    loading = get_object_or_404(
+        Loading.objects.prefetch_related("orders__items"),
+        pk=loading_id,
+    )
+    orders = list(loading.orders.all())
+    return render(
+        request,
+        "console/packing_slips.html",
         {
-            "order": order,
-            "slips": [
-                {
-                    "order": order,
-                    "lines": lines,
-                    "tax_total": tax_total,
-                    "grand_total": order.total + tax_total,
-                }
-            ],
-            "profile": profile,
+            "loading": loading,
+            "orders": orders,
+            "slips": [_slip(order) for order in orders],
         },
     )
 
@@ -589,23 +651,15 @@ def dispatch_summary(request):
         return redirect("console-loading-detail", loading_id=loading.id)
 
     orders = eligible
-    loading = {}
-    for order in orders:
-        for item in order.items.all():
-            key = (item.sku, item.name, item.unit)
-            row = loading.setdefault(
-                key,
-                {"sku": item.sku, "name": item.name, "unit": item.unit, "quantity": 0, "orders": 0},
-            )
-            row["quantity"] += item.quantity
-            row["orders"] += 1
+    pick_list = _consolidated_items(orders)
 
     return render(
         request,
         "console/dispatch_summary.html",
         {
             "orders": orders,
-            "loading": sorted(loading.values(), key=lambda row: row["name"]),
+            "pick_list": pick_list,
+            "pick_units": sum(row["quantity"] for row in pick_list),
             "generated_at": date.today(),
         },
     )
@@ -618,36 +672,16 @@ def loading_detail(request, loading_id):
         pk=loading_id,
     )
     orders = list(loading.orders.all())
-    items = {}
     profile = DistributorProfile.objects.first() or DistributorProfile()
-    slips = []
-    for order in orders:
-        for item in order.items.all():
-            key = (item.sku, item.name, item.unit)
-            row = items.setdefault(
-                key,
-                {"sku": item.sku, "name": item.name, "unit": item.unit, "quantity": 0},
-            )
-            row["quantity"] += item.quantity
-        lines = _slip_lines(order)
-        slips.append(
-            {
-                "order": order,
-                "lines": lines,
-                "tax_total": sum(line["tax"] for line in lines),
-                "grand_total": sum(line["total"] for line in lines),
-            }
-        )
-
     return render(
         request,
         "console/loading_detail.html",
         {
             "loading": loading,
             "orders": orders,
-            "items": sorted(items.values(), key=lambda row: row["name"]),
+            "items": _consolidated_items(orders),
             "profile": profile,
-            "slips": slips,
+            "slips": [_slip(order) for order in orders],
         },
     )
 

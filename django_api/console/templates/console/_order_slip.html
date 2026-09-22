@@ -18,11 +18,11 @@
       <p class="font-semibold">Deliver to</p>
       <p class="mt-1">{{ slip.order.shop.storeName }}</p>
       <p class="text-slate-500">{{ slip.order.shop.customerName }}{% if slip.order.shop.customerName and slip.order.shop.mobile %} · {% endif %}{{ slip.order.shop.mobile }}</p>
-      <p class="whitespace-pre-line text-slate-500">{{ slip.order.billing_address|default:slip.order.shop.address }}</p>
+      <p class="whitespace-pre-line text-slate-500">{% firstof slip.order.billing_address slip.order.shop.address %}</p>
     </div>
     <div>
       <p class="font-semibold">Customer GSTIN</p>
-      <p class="mt-1 text-slate-500">{{ slip.order.customer_gstin|default:slip.order.shop.gstin|default:'Unregistered' }}</p>
+      <p class="mt-1 text-slate-500">{% firstof slip.order.customer_gstin slip.order.shop.gstin 'Unregistered' %}</p>
       <p class="mt-2 font-semibold">Place of supply</p>
       <p class="mt-1 text-slate-500">{{ slip.order.place_of_supply|default:'—' }}</p>
       {% if slip.order.notes %}

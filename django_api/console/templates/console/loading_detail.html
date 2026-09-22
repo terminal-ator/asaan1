@@ -9,7 +9,10 @@
       <h1 class="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">{{ loading.loading_number }}</h1>
       <p class="mt-1 text-sm text-slate-500">{{ loading.created_at|date:'d M Y, H:i' }} · {{ loading.get_status_display }}</p>
     </div>
-    <button class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800" onclick="window.print()">Print loading + slips</button>
+    <div class="flex flex-wrap gap-2">
+      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-loading-packing-slips' loading.id %}">Print packing slips</a>
+      <button class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800" onclick="window.print()">Print loading + billing slips</button>
+    </div>
   </div>
 
   <div class="mb-5 hidden print:block">
@@ -19,7 +22,7 @@
 
   <section class="mb-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
     <div class="border-b border-slate-200 px-5 py-4 sm:px-6"><h2 class="font-semibold">Bills in this loading</h2><p class="mt-1 text-sm text-slate-500">These orders travel together. Bills are raised in Marg.</p></div>
-    <div class="overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-5 py-3 sm:px-6">Order</th><th class="px-4 py-3">Shop</th><th class="px-4 py-3">GSTIN</th><th class="px-4 py-3 sm:px-6">Tentative total</th></tr></thead><tbody class="divide-y divide-slate-100">{% for order in orders %}<tr><td class="px-5 py-4 sm:px-6"><a class="font-semibold text-emerald-700" href="{% url 'console-order-detail' order.id %}">{{ order.order_number }}</a><p class="mt-1 text-xs text-slate-500">{{ order.created_at|date:'d M, H:i' }}</p></td><td class="px-4 py-4">{{ order.shop.storeName }}<p class="mt-1 text-xs text-slate-500">{{ order.shop.mobile }}</p></td><td class="px-4 py-4 text-slate-500">{{ order.customer_gstin|default:order.shop.gstin|default:'—' }}</td><td class="px-4 py-4 font-semibold sm:px-6">₹{{ order.total|rupees }}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-5 py-3 sm:px-6">Order</th><th class="px-4 py-3">Shop</th><th class="px-4 py-3">GSTIN</th><th class="px-4 py-3 sm:px-6">Tentative total</th></tr></thead><tbody class="divide-y divide-slate-100">{% for order in orders %}<tr><td class="px-5 py-4 sm:px-6"><a class="font-semibold text-emerald-700" href="{% url 'console-order-detail' order.id %}">{{ order.order_number }}</a><p class="mt-1 text-xs text-slate-500">{{ order.created_at|date:'d M, H:i' }}</p></td><td class="px-4 py-4">{{ order.shop.storeName }}<p class="mt-1 text-xs text-slate-500">{{ order.shop.mobile }}</p></td><td class="px-4 py-4 text-slate-500">{% firstof order.customer_gstin order.shop.gstin '—' %}</td><td class="px-4 py-4 font-semibold sm:px-6">₹{{ order.total|rupees }}</td></tr>{% endfor %}</tbody></table></div>
   </section>
 
   <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">

@@ -1,0 +1,19 @@
+{% extends 'console/base.html' %}
+
+{% block content %}
+<main class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:py-8">
+  <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
+    <div>
+      <a class="text-sm font-semibold text-emerald-700 hover:text-emerald-900" href="{% url 'console-loading-detail' loading.id %}">← Back to {{ loading.loading_number }}</a>
+      <p class="mt-1 text-sm text-slate-500">One slip per bill. No prices — tick each line while packing.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-loading-detail' loading.id %}">Loading sheet + billing slips</a>
+      <button class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800" onclick="window.print()">Print {{ slips|length }} packing slip{{ slips|length|pluralize }}</button>
+    </div>
+  </div>
+  <div class="grid gap-3 md:grid-cols-2 print:grid-cols-2">
+    {% for slip in slips %}{% include 'console/_packing_slip.html' %}{% empty %}<p class="text-sm text-slate-500">No bills in this loading.</p>{% endfor %}
+  </div>
+</main>
+{% endblock %}

@@ -10,9 +10,10 @@ Retailer ordering PWA plus a distributor console.
 Bills are raised by hand in Marg ERP. Ordex captures the order and prepares it for billing:
 
 1. A shop submits an order in the PWA. Totals are tentative; prices are recomputed server-side from the catalogue.
-2. Staff review it in the console (`/console/`), fix the customer GSTIN, billing address, or place of supply if needed, and print an **order slip** (`/console/orders/<id>/slip`).
+2. Staff review it in the console (`/console/`), fix the customer GSTIN, billing address, or place of supply if needed, and print an **order slip** (`/console/orders/<id>/slip`) with prices for billing.
 3. The billing desk keys the bill into Marg. Export a day's lines as CSV from the dashboard or the sales register (`Export items CSV`) if that is easier than reading slips.
-4. Orders going out together are grouped into a **loading**; the loading page prints the consolidated pick list and all order slips.
+4. The **Dispatch summary** covers the day's unassigned bills: it lists each bill and a consolidated **pick list** grouped by company and brand, with quantities and how many bills need each SKU.
+5. Orders going out together are grouped into a **loading**. The loading page prints the loading sheet, billing slips, or a set of dense **packing slips** — one price-free slip per bill with a tick box per line for the packing table.
 
 In-app invoice numbering, the stock ledger during dispatch, and e-invoice upload are **paused** until auto-billing from Ordex replaces the manual step. The related models and views are kept for that future work but are not linked from the console.
 

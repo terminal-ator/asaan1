@@ -3,7 +3,7 @@
 ## Current phase
 
 - The PWA captures orders; staff bill them by hand in Marg ERP.
-- The console prepares printed order slips and line-item CSV exports. It must
+- The console prepares printed order slips, packing slips, and line-item CSV exports. It must
   not assign invoice numbers or post dispatch stock until auto-billing is built.
 - `OrderInvoiceForm`, `invoice_detail`, `invoice_json`, `invoice_excel`, and
   `einvoice_upload` are parked for that future phase: keep the code and models,

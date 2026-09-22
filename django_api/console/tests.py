@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from catalogue.models import Brand, Category, Company, Order, OrderItem, Product, Shop
+from console.views import _consolidated_items
 
 
 class ConsoleOrderFlowTests(TestCase):
@@ -153,4 +154,110 @@ class ConsoleOrderFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Consolidated items to load", content)
         self.assertIn("Order slip", content)
+        self.assertIn("ORD-TEST-1", content)
+
+    def test_slips_render_for_orders_without_gstin_or_address_keys(self):
+        # Orders placed before the GSTIN field exist in the database without
+        # those keys in the shop snapshot; every slip must still render.
+        old_order = Order.objects.create(
+            client_order_id=str(uuid.uuid4()),
+            order_number="ORD-TEST-3",
+            shop={"storeName": "Old shop", "mobile": "7777777777"},
+            total=10000,
+        )
+        OrderItem.objects.create(
+            order=old_order,
+            product_id_snapshot=self.product.id,
+            sku="SKU-1",
+            name="Test product",
+            unit="case",
+            quantity=1,
+            rate=10000,
+            gst_rate=18,
+            line_total=10000,
+        )
+        self.client.force_login(self.user)
+        for url in (
+            reverse("console-order-slip", args=[old_order.id]),
+            reverse("console-order-packing-slip", args=[old_order.id]),
+            reverse("console-order-detail", args=[old_order.id]),
+        ):
+            self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.post(
+            reverse("console-dispatch-summary"),
+            {"order_ids": [str(old_order.id)], "action": "loading"},
+        )
+        old_order.refresh_from_db()
+        self.assertEqual(
+            self.client.get(
+                reverse("console-loading-detail", args=[old_order.loading_id])
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("console-loading-packing-slips", args=[old_order.loading_id])
+            ).status_code,
+            200,
+        )
+
+    def test_pick_list_consolidates_quantities_and_bills(self):
+        second = Order.objects.create(
+            client_order_id=str(uuid.uuid4()),
+            order_number="ORD-TEST-2",
+            shop={"storeName": "Second shop", "mobile": "8888888888"},
+            total=30000,
+        )
+        OrderItem.objects.create(
+            order=second,
+            product_id_snapshot=self.product.id,
+            sku="SKU-1",
+            name="Test product",
+            unit="case",
+            quantity=3,
+            rate=10000,
+            gst_rate=18,
+            line_total=30000,
+        )
+        rows = _consolidated_items([self.order, second])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["quantity"], 5)
+        self.assertEqual(rows[0]["bills"], 2)
+        self.assertEqual(rows[0]["company"], "Test company")
+
+    def test_dispatch_summary_includes_pick_list(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("console-dispatch-summary"))
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Pick list", content)
+        self.assertIn("SKU-1", content)
+        self.assertIn("Test company", content)
+
+    def test_single_packing_slip_is_dense_and_has_no_prices(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("console-order-packing-slip", args=[self.order.id])
+        )
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Packing slip", content)
+        self.assertIn("ORD-TEST-1", content)
+        self.assertIn("2 case", content)
+        self.assertNotIn("₹", content)
+
+    def test_loading_packing_slips_cover_every_bill(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("console-dispatch-summary"),
+            {"order_ids": [str(self.order.id)], "action": "loading"},
+        )
+        self.order.refresh_from_db()
+        response = self.client.get(
+            reverse("console-loading-packing-slips", args=[self.order.loading_id])
+        )
+        content = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Packing slip", content)
+        self.assertIn("Test shop", content)
         self.assertIn("ORD-TEST-1", content)
