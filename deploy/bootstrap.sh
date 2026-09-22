@@ -10,7 +10,8 @@
 # else has a sensible default:
 #
 #   SITE_HOST      public hostname; defaults to <public-ip>.sslip.io
-#   EMAIL          ACME contact address for Caddy (optional, recommended)
+#   EMAIL          ACME contact address (optional, recommended)
+#   PROXY          caddy (default, needs ports 80/443) or nginx (existing server)
 #   DB             sqlite (default) or postgres
 #   APP_DIR        /opt/asaan
 #   APP_USER       asaan
@@ -34,6 +35,7 @@ ENV_DIR="${ENV_DIR:-/etc/asaan}"
 ENV_FILE="$ENV_DIR/asaan.env"
 GUNICORN_PORT="${GUNICORN_PORT:-8123}"
 DB="${DB:-sqlite}"
+PROXY="${PROXY:-caddy}"
 SITE_HOST="${SITE_HOST:-}"
 EMAIL="${EMAIL:-}"
 REPO_URL="${REPO_URL:-}"
@@ -45,6 +47,7 @@ die() { echo "error: $1" >&2; exit 1; }
 [ "$(id -u)" = "0" ] || die "run this with sudo"
 [ -f /etc/debian_version ] || die "this script targets Debian or Ubuntu"
 [ "$DB" = "sqlite" ] || [ "$DB" = "postgres" ] || die "DB must be sqlite or postgres"
+[ "$PROXY" = "caddy" ] || [ "$PROXY" = "nginx" ] || die "PROXY must be caddy or nginx"
 
 say "hostname"
 if [ -z "$SITE_HOST" ]; then
@@ -59,14 +62,19 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates gnupg sqlite3 python3-venv python3-pip ufw
 
-# Caddy from its official repository (newer than the distribution package).
-if ! command -v caddy >/dev/null 2>&1; then
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -qq
-  apt-get install -y -qq caddy
+# A reverse proxy: Caddy on a fresh box, or the nginx that is already running.
+if [ "$PROXY" = "caddy" ]; then
+  if ! command -v caddy >/dev/null 2>&1; then
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+      | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+      > /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -qq
+    apt-get install -y -qq caddy
+  fi
+else
+  command -v nginx >/dev/null 2>&1 || die "PROXY=nginx but nginx is not installed"
+  command -v certbot >/dev/null 2>&1 || apt-get install -y -qq certbot python3-certbot-nginx
 fi
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v\([0-9]*\).*/\1/')" -lt 18 ]; then
@@ -77,8 +85,12 @@ if [ "$DB" = "postgres" ]; then apt-get install -y -qq postgresql postgresql-cli
 
 say "ports"
 port_busy() { ss -ltn 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { found=1 } END { exit !found }'; }
-if port_busy 80 || port_busy 443; then
-  die "ports 80 or 443 are already in use. Caddy needs both for certificates and HTTPS; on a box that already runs nginx, add Asaan as an nginx vhost instead (deploy/nginx.conf)."
+if [ "$PROXY" = "caddy" ]; then
+  if port_busy 80 || port_busy 443; then
+    die "ports 80 or 443 are already in use. For a box that already runs nginx use PROXY=nginx."
+  fi
+else
+  echo "using the existing nginx; Asaan becomes another virtual host on 80/443"
 fi
 
 say "service account and directories"
@@ -152,18 +164,28 @@ say "systemd unit"
 sed -e "s|/opt/asaan|$APP_DIR|g" -e "s|/var/lib/asaan|$DATA_DIR|g" \
   "$APP_DIR/deploy/asaan.service" > /etc/systemd/system/asaan.service
 
-say "caddy site"
-install -d /etc/caddy
-sed -e "s/asaan\.in/$SITE_HOST/g" \
-    -e "s|/opt/asaan|$APP_DIR|g" \
-    -e "s|/var/lib/asaan|$DATA_DIR|g" \
-    "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
-if [ -n "$EMAIL" ]; then
-  printf '{\n\temail %s\n}\n\n' "$EMAIL" > /etc/caddy/Caddyfile.tmp
-  cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.tmp
-  mv /etc/caddy/Caddyfile.tmp /etc/caddy/Caddyfile
+if [ "$PROXY" = "caddy" ]; then
+  say "caddy site"
+  install -d /etc/caddy
+  sed -e "s/asaan\.in/$SITE_HOST/g" \
+      -e "s|/opt/asaan|$APP_DIR|g" \
+      -e "s|/var/lib/asaan|$DATA_DIR|g" \
+      "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
+  if [ -n "$EMAIL" ]; then
+    printf '{\n\temail %s\n}\n\n' "$EMAIL" > /etc/caddy/Caddyfile.tmp
+    cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.tmp
+    mv /etc/caddy/Caddyfile.tmp /etc/caddy/Caddyfile
+  fi
+  caddy validate --config /etc/caddy/Caddyfile
+else
+  say "nginx site"
+  sed -e "s/asaan\.in/$SITE_HOST/g" \
+      -e "s|/opt/asaan|$APP_DIR|g" \
+      -e "s|/var/lib/asaan|$DATA_DIR|g" \
+      "$APP_DIR/deploy/nginx.conf" > /etc/nginx/sites-available/asaan
+  ln -sf /etc/nginx/sites-available/asaan /etc/nginx/sites-enabled/asaan
+  nginx -t
 fi
-caddy validate --config /etc/caddy/Caddyfile
 
 if [ "$SKIP_FIREWALL" != "1" ]; then
   say "firewall"
@@ -181,17 +203,33 @@ APP_DIR="$APP_DIR" APP_USER="$APP_USER" ENV_FILE="$ENV_FILE" \
   SKIP_FRONTEND="${SKIP_FRONTEND:-0}" sh "$APP_DIR/deploy/deploy.sh"
 
 say "https"
-systemctl enable caddy >/dev/null 2>&1 || true
-systemctl restart caddy
-if curl -fsS --max-time 5 "https://$SITE_HOST/healthz" >/dev/null 2>&1; then
+if [ "$PROXY" = "caddy" ]; then
+  systemctl enable caddy >/dev/null 2>&1 || true
+  systemctl restart caddy
+else
+  systemctl reload nginx 2>/dev/null || systemctl restart nginx
+  if [ -n "$EMAIL" ]; then
+    certbot --nginx -d "$SITE_HOST" --non-interactive --agree-tos -m "$EMAIL" --redirect || true
+  fi
+fi
+
+# Ask for the certificate locally, so this works before public DNS has settled.
+https_ok() {
+  curl -fsS --max-time 5 --resolve "$SITE_HOST:443:127.0.0.1" \
+    "https://$SITE_HOST/healthz" >/dev/null 2>&1
+}
+
+URL="https://$SITE_HOST"
+if https_ok; then
   sed -i 's/^DJANGO_SECURE_COOKIES=.*/DJANGO_SECURE_COOKIES=true/' "$ENV_FILE"
   systemctl restart asaan
-  URL="https://$SITE_HOST"
-  echo "certificate issued for $SITE_HOST; secure cookies enabled"
+  echo "HTTPS is live for $SITE_HOST; secure cookies enabled"
 else
-  URL="https://$SITE_HOST"
-  echo "Caddy could not get a certificate yet, usually because DNS for $SITE_HOST"
-  echo "does not point here. Caddy keeps retrying; once the record is live run:"
+  echo "HTTPS is not answering yet for $SITE_HOST. That is expected until DNS"
+  echo "points here; the certificate is issued on the next attempt. Then run:"
+  if [ "$PROXY" = "nginx" ]; then
+    echo "  certbot --nginx -d $SITE_HOST        # only when no certificate exists yet"
+  fi
   echo "  curl -fsS $URL/healthz"
   echo "  sed -i 's/^DJANGO_SECURE_COOKIES=.*/DJANGO_SECURE_COOKIES=true/' $ENV_FILE"
   echo "  systemctl restart asaan"

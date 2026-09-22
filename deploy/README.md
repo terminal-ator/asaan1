@@ -54,7 +54,8 @@ apt update && apt install -y sqlite3 git curl ca-certificates gnupg unzip
 # a recent Node LTS, only needed if the server builds the PWA itself
 # (with deploy/ship.sh it is built on your machine and Node stays off the server)
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs
-# Caddy, from its official repository
+# Caddy, from its official repository (skip this when the box already runs
+# nginx on 80/443 and you will use PROXY=nginx, see the shared-server section)
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
   | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
@@ -238,33 +239,44 @@ A backup you have never restored is not a backup. Also copy the env file somewhe
 - [ ] Optional: restrict `/admin/*` to the office IP (`@admin remote_ip` style matcher in the Caddyfile, or nginx `allow`/`deny` if you are on that path).
 - [ ] Django admin and console accounts: one per person, so a departure is a deactivation, not a shared-password change.
 
-## 7. Shared server (Lightsail and friends)
+## 7. Shared server (an existing Lightsail box and friends)
 
-Asaan is happy to share a box with other services as long as ports and the reverse proxy do not collide.
+Asaan is happy to share a box with other services. The only rules are: nothing else may already be listening on `127.0.0.1:8123`, and if a web server owns 80/443 then Asaan must join it as a virtual host instead of installing Caddy.
 
 **Recon first:**
 
 ```sh
 ss -ltnp                        # what is listening, and on which ports
 systemctl is-active caddy nginx apache2
-df -h && free -h                # room for SQLite, photos and a node build
+df -h && free -h                # room for the app, SQLite/Postgres and photos
 ```
 
-Then choose the shape:
+Then install with the proxy that fits:
 
-- **a web server already owns 80/443** (the usual case on a shared box): Caddy cannot bind those ports, so add Asaan as another nginx vhost using `deploy/nginx.conf`, and run `certbot --nginx -d <hostname>` for the certificate. Nothing new is exposed and other sites are untouched.
-- **separate public port**: after getting a certificate, change `listen 80;` to `listen 9123 ssl;` in the Asaan server block. Open 9123 in the Lightsail console and in `ufw` if enabled.
-- **no hostname yet**: `https://203-0-113-10.sslip.io` resolves to your IP automatically. Point Caddy (or the nginx vhost plus `certbot --nginx -d 203-0-113-10.sslip.io`) at it and you get a real certificate, so the PWA can install and work offline.
-- **no TLS at all yet**: treat plain HTTP as a temporary test — the PWA's install and offline features require HTTPS. For the console, do not expose it; tunnel instead: `ssh -L 8123:127.0.0.1:8123 ubuntu@<ip>` then browse `http://localhost:8123/console/`.
+```sh
+# a fresh box: Caddy, which manages its own certificates
+sudo SITE_HOST=asaan.in EMAIL=you@asaan.in sh deploy/bootstrap.sh
 
-**Lightsail firewall** (separate from `ufw`): Console → instance → *Networking* → *IPv4 Firewall* → *Add rule*. Allow `HTTPS 443` and `HTTP 80` for Let's Encrypt, or your custom TCP port `9123`. Your SSH rule is already there. Attach a **static IP** so the address survives a reboot, and turn on automatic **instance snapshots** as a second line of defence behind the nightly backups.
+# a box that already runs nginx on 80/443: join it as another vhost
+sudo PROXY=nginx SITE_HOST=asaan.in EMAIL=you@asaan.in sh deploy/bootstrap.sh
+```
+
+With `PROXY=nginx` the bootstrap writes `/etc/nginx/sites-available/asaan`, symlinks it into `sites-enabled`, tests the config, runs `certbot --nginx -d asaan.in` when you pass an `EMAIL`, and leaves every other site untouched. It still checks that nginx is installed and never touches ports 80/443 itself.
+
+Other shapes:
+
+- **separate public port**: after the certificate exists, change `listen 80;` to `listen 9123 ssl;` in the Asaan server block (with the `ssl_certificate` lines certbot wrote). Open 9123 in the cloud firewall and in `ufw` if enabled.
+- **no hostname yet**: `https://203-0-113-10.sslip.io` resolves to your IP automatically, so point `SITE_HOST` at it and you still get a real certificate on either proxy.
+- **no TLS at all yet**: treat plain HTTP as a temporary test — the PWA's install and offline features require HTTPS. Never expose the console without TLS; tunnel instead: `ssh -L 8123:127.0.0.1:8123 user@host` then browse `http://localhost:8123/console/`.
+
+**Lightsail firewall** (separate from `ufw`): Console → instance → *Networking* → *IPv4 Firewall* → *Add rule*. Allow `HTTP 80` and `HTTPS 443`, or your custom TCP port `9123`. Keep the SSH rule, attach a **static IP** so the address survives a reboot, and turn on automatic **instance snapshots** as a second line of defence behind the nightly backups.
 
 **Coexistence notes:**
 
 - Only one process can bind a port — check `ss -ltnp | grep 8123` before starting.
 - nginx routes virtual hosts by `server_name` and Caddy by site address, so adding one does not disturb the others.
-- Memory: two gunicorn workers plus SQLite sit around 150–250 MB. On a 512 MB instance add 1 GB of swap, or set `--workers 1`.
-- If another web server (Apache, Caddy) owns 80/443, either put Asaan behind it as a plain HTTP upstream on 8123, or use the custom-port route.
+- Memory: two gunicorn workers plus SQLite sit around 150–250 MB; add Postgres and you want at least 1 GB free. On a tight box set `--workers 1` in the unit and add swap.
+- Postgres is already running on many shared boxes — set `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` in the env file instead of `DATABASE_PATH` and the bootstrap creates the role and database for you.
 
 ## 8. Scale path
 
