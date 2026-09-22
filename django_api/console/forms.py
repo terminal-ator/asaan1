@@ -27,16 +27,16 @@ class ProductForm(forms.ModelForm):
 
         field_class = (
             "block w-full rounded-xl border border-slate-300 bg-white px-3 "
-            "py-2.5 text-sm outline-none transition focus:border-emerald-600 "
-            "focus:ring-2 focus:ring-emerald-100"
+            "py-2.5 text-sm outline-none transition focus:border-brand-500 "
+            "focus:ring-4 focus:ring-brand-100"
         )
 
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.setdefault(
                     "class",
-                    "h-4 w-4 rounded border-slate-300 text-emerald-700 "
-                    "focus:ring-emerald-600",
+                    "h-4 w-4 rounded border-slate-300 text-brand-600 "
+                    "focus:ring-brand-500",
                 )
             else:
                 field.widget.attrs.setdefault("class", field_class)

@@ -1,2 +1,11 @@
-.product-image { width: 54px; height: 54px; flex: 0 0 54px; margin-right: 11px; border-radius: 8px; object-fit: cover; background: #f1f4f1; }
-.product-image.placeholder { display: grid; place-items: center; color: #8a988e; font-size: 22px; }
+.product-image {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  margin-right: 12px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: #f1f5f9;
+  border: 1px solid var(--line);
+}
+.product-image.placeholder { display: grid; place-items: center; color: var(--faint); font-size: 21px; border-style: dashed; }

@@ -26,8 +26,8 @@ class PurchaseForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         field_class = (
             "block w-full rounded-xl border border-slate-300 bg-white px-3 "
-            "py-2.5 text-sm outline-none focus:border-emerald-600 "
-            "focus:ring-2 focus:ring-emerald-100"
+            "py-2.5 text-sm outline-none focus:border-brand-500 "
+            "focus:ring-4 focus:ring-brand-100"
         )
         for field in self.fields.values():
             field.widget.attrs["class"] = field_class
@@ -66,8 +66,8 @@ class PurchaseItemForm(forms.ModelForm):
             self.initial["rate"] = Decimal(self.instance.rate) / 100
         input_class = (
             "w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 "
-            "text-sm outline-none focus:border-emerald-600 focus:ring-2 "
-            "focus:ring-emerald-100"
+            "text-sm outline-none focus:border-brand-500 focus:ring-4 "
+            "focus:ring-brand-100"
         )
         for field in self.fields.values():
             field.widget.attrs["class"] = input_class

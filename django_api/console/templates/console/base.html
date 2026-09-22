@@ -1,1 +1,68 @@
-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ordex Console</title><script src="https://cdn.tailwindcss.com"></script><script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script><style>@media print{nav,.no-print{display:none!important}body{background:#fff!important}.slip-page{break-after:page;box-shadow:none!important;border:1px solid #cbd5e1!important}}@page{margin:12mm}[x-cloak]{display:none!important}</style></head><body class="min-h-screen bg-slate-50 text-slate-900"><nav class="bg-emerald-900 text-white"><div class="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-4 sm:px-6"><a class="mr-3 text-lg font-black" href="{% url 'console-dashboard' %}">Ordex <span class="font-normal text-emerald-300">Console</span></a><a class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold" href="{% url 'console-sales-register' %}">Sales register</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-purchase-list' %}">Purchases</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-returns' %}">Returns</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-inventory' %}">Inventory</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-products' %}">Products</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-shops' %}">Customers</a><a class="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-800" href="{% url 'console-gst-report' %}">GST reports</a><span class="flex-1"></span><a class="text-sm text-emerald-200 hover:text-white" href="{% url 'console-invoice-settings' %}">Settings</a><div class="relative" x-data="{open: false}" @keydown.escape.window="open = false"><button type="button" class="rounded-lg px-3 py-2 text-xl leading-none text-emerald-100 hover:bg-emerald-800" aria-label="More options" @click="open = !open" :aria-expanded="open ? 'true' : 'false'">⋮</button><div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl bg-white py-1 text-slate-800 shadow-xl ring-1 ring-slate-200"><button type="button" class="block w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-100" onclick="window.location.reload()">Refresh</button><button type="button" class="block w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-100" onclick="ordexClearCache()">Clear cache &amp; reload</button><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="block w-full px-4 py-2.5 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50">Log out</button></form></div></div></div></nav>{% if messages %}<div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}<script>async function ordexClearCache(){try{if("caches"in window){for(const key of await caches.keys())await caches.delete(key)}if("serviceWorker"in navigator){for(const registration of await navigator.serviceWorker.getRegistrations())await registration.unregister()}}finally{window.location.reload()}}</script></body></html>
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#4f46e5">
+<title>Ordex Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81'},
+        },
+        fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+        boxShadow: { card: '0 1px 2px rgba(15,23,42,.05), 0 10px 30px -18px rgba(15,23,42,.25)' },
+      },
+    },
+  }
+</script>
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+  [x-cloak]{display:none!important}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  table{font-variant-numeric:tabular-nums}
+  @media print{nav,.no-print{display:none!important}body{background:#fff!important}.slip-page{break-after:page;box-shadow:none!important;border:1px solid #cbd5e1!important}}
+  @page{margin:12mm}
+</style>
+</head>
+<body class="min-h-screen bg-slate-50 font-sans text-slate-900">
+<nav class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur">
+  <div class="mx-auto flex max-w-7xl items-center gap-2 px-4 py-3 sm:px-6">
+    <a href="{% url 'console-dashboard' %}" class="mr-2 flex shrink-0 items-center gap-2">
+      <span class="grid h-8 w-8 place-items-center rounded-xl bg-brand-600 text-sm font-black text-white">O</span>
+      <span class="text-base font-extrabold tracking-tight">Ordex</span>
+      <span class="rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-700">Console</span>
+    </a>
+    <div class="flex flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if request.path == '/console/' %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-dashboard' %}">Orders</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/sales' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-sales-register' %}">Sales</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/dispatch-summary' in request.path or '/console/loadings' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-dispatch-summary' %}">Dispatch</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/products' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-products' %}">Products</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/inventory' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-inventory' %}">Inventory</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/purchases' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-purchase-list' %}">Purchases</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/returns' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-returns' %}">Returns</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/shops' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-shops' %}">Customers</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/reports/gst' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-gst-report' %}">GST</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/settings' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-invoice-settings' %}">Settings</a>
+    </div>
+    <div class="relative shrink-0" x-data="{open: false}" @keydown.escape.window="open = false">
+      <button type="button" class="rounded-lg px-2.5 py-2 text-xl leading-none text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="More options" @click="open = !open" :aria-expanded="open ? 'true' : 'false'">⋮</button>
+      <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-slate-800 shadow-xl">
+        <button type="button" class="block w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50" onclick="window.location.reload()">Refresh</button>
+        <button type="button" class="block w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-slate-50" onclick="ordexClearCache()">Clear cache &amp; reload</button>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="block w-full px-4 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">Log out</button></form>
+      </div>
+    </div>
+  </div>
+</nav>
+{% if messages %}<div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}
+{% block content %}{% endblock %}
+<script>async function ordexClearCache(){try{if("caches"in window){for(const key of await caches.keys())await caches.delete(key)}if("serviceWorker"in navigator){for(const registration of await navigator.serviceWorker.getRegistrations())await registration.unregister()}}finally{window.location.reload()}}</script>
+</body>
+</html>

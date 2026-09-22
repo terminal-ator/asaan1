@@ -3,11 +3,11 @@
 {% block content %}
 <main class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:py-8">
   <div class="no-print mb-2 flex flex-wrap items-center justify-between gap-2">
-    <a class="text-sm font-semibold text-emerald-700 hover:text-emerald-900" href="{% url 'console-order-detail' order.id %}">← Back to order</a>
+    <a class="text-sm font-semibold text-brand-600 hover:text-brand-800" href="{% url 'console-order-detail' order.id %}">← Back to order</a>
     <div class="flex flex-wrap gap-2">
-      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-order-items-export' %}?from={{ order.created_at|date:'Y-m-d' }}&amp;to={{ order.created_at|date:'Y-m-d' }}">Export day's items CSV</a>
-      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-order-packing-slip' order.id %}">Packing slip</a>
-      <button class="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800" onclick="window.print()">Print slip</button>
+      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" href="{% url 'console-order-items-export' %}?from={{ order.created_at|date:'Y-m-d' }}&amp;to={{ order.created_at|date:'Y-m-d' }}">Export day's items CSV</a>
+      <a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" href="{% url 'console-order-packing-slip' order.id %}">Packing slip</a>
+      <button class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700" onclick="window.print()">Print slip</button>
     </div>
   </div>
   {% for slip in slips %}

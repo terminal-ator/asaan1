@@ -24,12 +24,12 @@ class ShopForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         input_class = (
             "block w-full rounded-xl border border-slate-300 bg-white px-3 "
-            "py-2.5 text-sm outline-none focus:border-emerald-600 "
-            "focus:ring-2 focus:ring-emerald-100"
+            "py-2.5 text-sm outline-none focus:border-brand-500 "
+            "focus:ring-4 focus:ring-brand-100"
         )
         for field in self.fields.values():
             field.widget.attrs["class"] = (
-                "h-4 w-4 rounded border-slate-300 text-emerald-700"
+                "h-4 w-4 rounded border-slate-300 text-brand-600"
                 if isinstance(field.widget, forms.CheckboxInput)
                 else input_class
             )

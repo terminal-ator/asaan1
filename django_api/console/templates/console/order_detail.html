@@ -5,30 +5,30 @@
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
   <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div>
-      <a class="text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+      <a class="text-sm font-semibold text-brand-600 hover:text-brand-800"
          href="{% url 'console-dashboard' %}">← Back to orders</a>
-      <h1 class="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+      <h1 class="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
         {{ order.order_number }}
       </h1>
       <p class="mt-1 text-sm text-slate-500">
         {{ order.created_at|date:'d M Y, H:i' }} · {{ order.get_status_display }}
       </p>
       {% if order.loading %}
-      <p class="mt-2 text-sm text-slate-500">Loading: <a class="font-semibold text-emerald-700" href="{% url 'console-loading-detail' order.loading.id %}">{{ order.loading.loading_number }}</a></p>
+      <p class="mt-2 text-sm text-slate-500">Loading: <a class="font-semibold text-brand-600" href="{% url 'console-loading-detail' order.loading.id %}">{{ order.loading.loading_number }}</a></p>
       {% endif %}
     </div>
-    <span class="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700">
+    <span class="inline-flex w-fit rounded-full bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-600">
       {{ order.get_status_display }}
     </span>
     <div class="no-print flex flex-wrap gap-2">
-      <a class="inline-flex w-fit rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800" href="{% url 'console-order-slip' order.id %}">Print order slip</a>
-      <a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-order-packing-slip' order.id %}">Packing slip</a>
-      <a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:text-emerald-700" href="{% url 'console-order-items-export' %}?from={{ order.created_at|date:'Y-m-d' }}&amp;to={{ order.created_at|date:'Y-m-d' }}">Export day's items CSV</a>
+      <a class="inline-flex w-fit rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700" href="{% url 'console-order-slip' order.id %}">Print order slip</a>
+      <a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" href="{% url 'console-order-packing-slip' order.id %}">Packing slip</a>
+      <a class="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" href="{% url 'console-order-items-export' %}?from={{ order.created_at|date:'Y-m-d' }}&amp;to={{ order.created_at|date:'Y-m-d' }}">Export day's items CSV</a>
     </div>
   </div>
 
   <div class="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
-    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+    <section class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80">
       <div class="border-b border-slate-200 px-5 py-4 sm:px-6">
         <h2 class="font-semibold">Order items</h2>
       </div>
@@ -58,7 +58,7 @@
       </div>
     </section>
 
-    <section class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
+    <section class="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-200/80 sm:p-6">
       <h2 class="font-semibold">Billing details</h2>
       <p class="mt-1 text-sm text-slate-500">Printed on the order slip. Marg assigns the invoice number when the bill is raised.</p>
       <form class="mt-5 space-y-4" method="post">
@@ -66,7 +66,7 @@
         {% for field in form %}
         <label class="block"><span class="mb-1.5 block text-sm font-semibold text-slate-700">{{ field.label }}</span>{{ field }}{% for error in field.errors %}<span class="mt-1 block text-xs text-rose-600">{{ error }}</span>{% endfor %}</label>
         {% endfor %}
-        <button class="w-full rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800">Save billing details</button>
+        <button class="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700">Save billing details</button>
       </form>
       <div class="mt-5 border-t border-slate-100 pt-4 text-sm"><p class="font-semibold">Shop</p><p class="mt-1 text-slate-600">{{ order.shop.storeName }} · {{ order.shop.mobile }}</p><p class="mt-1 text-slate-500">GSTIN: {{ order.customer_gstin|default:shop_gstin|default:'Not provided' }}</p></div>
     </section>

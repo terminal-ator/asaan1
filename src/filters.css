@@ -1,20 +1,20 @@
-.filter-group { margin-top: 11px; }
+.filter-group { margin-top: 12px; }
 
 .filter-group > span {
   display: block;
-  margin: 0 0 6px 1px;
-  color: #69756d;
+  margin: 0 0 7px 2px;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: .06em;
 }
 
 .filter-row {
   display: flex;
   gap: 7px;
   overflow-x: auto;
-  padding: 1px 1px 3px;
+  padding: 1px 1px 4px;
   scrollbar-width: none;
 }
 
@@ -22,21 +22,24 @@
 
 .filter-pill {
   flex: 0 0 auto;
-  border: 1px solid #dce3dd;
+  border: 1px solid var(--line);
   border-radius: 999px;
   background: #fff;
-  color: #526159;
-  padding: 7px 11px;
-  font: 600 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+  color: var(--body);
+  padding: 8px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
   white-space: nowrap;
+  transition: border-color .12s, background .12s, color .12s, box-shadow .12s;
 }
 
+.filter-pill:hover { border-color: #c7d2fe; }
+
 .filter-pill.selected {
-  border-color: #176b51;
-  background: #176b51;
+  border-color: var(--brand);
+  background: var(--brand);
   color: #fff;
+  box-shadow: 0 10px 18px -12px rgba(79, 70, 229, 1);
 }
 
 .brands { margin-top: 10px; }
-
-.product-list { height: calc(100dvh - 280px); }
