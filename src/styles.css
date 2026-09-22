@@ -226,7 +226,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 }
 .product:active { background: #f8fafc; }
 .product-info { min-width: 0; padding-right: 10px; }
-.product b, .cart-line b, .history b {
+.product b, .history b {
   display: block;
   font-size: 14px;
   font-weight: 650;
@@ -234,7 +234,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.product small, .cart-line small, .history small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.product small, .history small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .product strong { font-size: 14.5px; font-weight: 700; color: var(--ink); display: block; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .product em { font-size: 11px; font-style: normal; font-weight: 500; color: var(--faint); }
 .scheme-chip {
@@ -331,27 +331,39 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 .primary:active { transform: translateY(1px); }
 
 /* Pages */
-.page { padding: 20px 16px 8px; }
+.page { padding: 22px 18px 10px; }
 .page h1 { font-size: 24px; font-weight: 800; letter-spacing: -.6px; margin: 18px 0; }
-.cart-line, .history { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f1f5f9; padding: 15px 0; }
-.cart-line > div:first-child, .history > div:first-child { flex: 1; min-width: 0; }
-.cart-line > strong, .history > strong { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px;
-  margin-top: 16px;
-  border-radius: var(--radius);
-  background: var(--canvas);
-  font-size: 15px;
-  color: var(--body);
+.history { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f1f5f9; padding: 15px 0; }
+.history > div:first-child { flex: 1; min-width: 0; }
+.history > strong { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Tables */
+.list-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.list-table th {
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  text-align: left;
 }
-.total b { font-size: 21px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
-.margin-total { margin-top: 10px; background: var(--success-soft); }
-.margin-total span { color: var(--success); font-weight: 650; }
-.margin-total small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--muted); }
-.margin-total b { color: var(--success); }
+.list-table td { padding: 14px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.list-table .num { text-align: right; white-space: nowrap; }
+.list-table td.item { min-width: 0; }
+.list-table td.item b { display: block; font-size: 14px; font-weight: 650; }
+.list-table td.item small { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); }
+.list-table td.amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.totals-table { width: 100%; margin-top: 18px; border-collapse: separate; border-spacing: 0 8px; font-size: 14px; }
+.totals-table td { background: var(--canvas); padding: 14px 16px; }
+.totals-table td:first-child { border-radius: 14px 0 0 14px; color: var(--body); }
+.totals-table td:last-child { border-radius: 0 14px 14px 0; text-align: right; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.totals-table small { display: block; margin-top: 3px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.totals-table tr.margin-row td { background: var(--success-soft); }
+.totals-table tr.margin-row td:first-child { color: var(--success); font-weight: 650; }
+.totals-table tr.margin-row td:last-child { color: var(--success); }
 .hint { font-size: 13px; color: var(--muted); line-height: 1.55; }
 .empty { font-size: 13.5px; color: var(--muted); padding: 28px 0; text-align: center; }
 
@@ -380,9 +392,8 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
   .menu-list { min-width: 180px; }
   .filter-toggle { padding: 0 12px; }
   .filter-toggle .filter-label, .filter-toggle .filter-chevron { display: none; }
-  .keypad-image { width: 80px; height: 80px; flex-basis: 80px; border-radius: 15px; }
-  .keypad-heading b { font-size: 15px; }
-  .keypad-details { grid-template-columns: minmax(0, 1fr); }
+  .keypad-image { width: 88px; height: 88px; flex-basis: 88px; border-radius: 16px; }
+  .keypad-heading b { font-size: 15.5px; }
 }
 
 @media (min-width: 761px) {
@@ -397,7 +408,7 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
   width: min(760px, 100%);
   max-height: 92dvh;
   overflow-y: auto;
-  padding: 18px 18px max(20px, env(safe-area-inset-bottom));
+  padding: 22px 20px max(24px, env(safe-area-inset-bottom));
   border-radius: 26px 26px 0 0;
   box-shadow: 0 -12px 40px rgba(15, 23, 42, .28);
   animation: keypad-in .18s ease-out;
@@ -406,51 +417,64 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 .keypad-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .keypad-product { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .keypad-image {
-  width: 96px;
-  height: 96px;
-  flex: 0 0 96px;
-  border-radius: 18px;
+  width: 112px;
+  height: 112px;
+  flex: 0 0 112px;
+  border-radius: 20px;
   object-fit: cover;
   background: #f1f5f9;
   border: 1px solid var(--line);
 }
-.keypad-image.placeholder { display: grid; place-items: center; color: var(--faint); font-size: 30px; }
-.keypad-heading { min-width: 0; }
-.keypad-heading b { display: block; font-size: 16px; font-weight: 750; line-height: 1.25; }
-.keypad-heading small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
-.keypad-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
-.keypad-price strong { font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.keypad-price em { font-size: 11px; font-style: normal; font-weight: 500; color: var(--faint); }
-.keypad-price s { font-size: 12.5px; color: var(--faint); }
-.keypad-title > button { background: none; border: 0; color: var(--muted); font-size: 25px; line-height: 20px; padding: 0 4px; }
-.keypad-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 16px;
-  margin: 14px 0 0;
-  padding: 12px 0 0;
+.keypad-image.placeholder { display: grid; place-items: center; color: var(--faint); font-size: 34px; }
+.keypad-heading { min-width: 0; padding-top: 4px; }
+.keypad-heading b { display: block; font-size: 17px; font-weight: 750; line-height: 1.3; }
+.keypad-heading small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.keypad-title > button { background: none; border: 0; color: var(--muted); font-size: 26px; line-height: 20px; padding: 0 6px; }
+.keypad-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid #f1f5f9;
 }
-.keypad-details > div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
-.keypad-details dt { color: var(--muted); }
-.keypad-details dd { margin: 0; min-width: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.keypad-price strong { font-size: 18px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.keypad-price em { font-size: 11.5px; font-style: normal; font-weight: 500; color: var(--faint); }
+.keypad-price s { font-size: 13px; color: var(--faint); }
+.detail-heading {
+  margin: 24px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 13.5px; }
+.detail-table th, .detail-table td { padding: 11px 2px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: top; }
+.detail-table tr:last-child th, .detail-table tr:last-child td { border-bottom: 0; }
+.detail-table th { width: 46%; color: var(--muted); font-weight: 500; }
+.detail-table td { font-weight: 650; overflow-wrap: anywhere; }
+.detail-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .keypad-margin {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
-  padding: 11px 13px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
   background: var(--success-soft);
 }
-.keypad-margin > span:first-child { font-size: 12.5px; font-weight: 650; color: var(--success); }
-.keypad-margin small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.keypad-margin > span:first-child { font-size: 13px; font-weight: 650; color: var(--success); }
+.keypad-margin small { display: block; margin-top: 3px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
 .keypad-margin-value { display: grid; justify-items: end; }
-.keypad-margin-value strong { font-size: 17px; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; }
-.keypad-margin-value em { font-size: 11px; font-style: normal; color: var(--muted); }
-.keypad-display { text-align: right; font-size: 34px; font-weight: 800; letter-spacing: -1.5px; padding: 12px 4px 8px; font-variant-numeric: tabular-nums; }
-.keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.keypad-margin-value strong { font-size: 18px; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; }
+.keypad-margin-value em { font-size: 11.5px; font-style: normal; color: var(--muted); margin-top: 2px; }
+.keypad-display { text-align: right; font-size: 32px; font-weight: 800; letter-spacing: -1.5px; padding: 12px 4px 6px; font-variant-numeric: tabular-nums; }
+.keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .keypad-grid button {
   height: 52px;
   border: 0;

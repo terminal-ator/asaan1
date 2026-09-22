@@ -318,16 +318,21 @@ function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { valu
 
 function Keypad({ product, value, pressKey, onClose, onSave }: { product: Product; value: string; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
   const scheme = Number(product.schemePercent) || 0
+  const gst = Number(product.gstRate) || 0
   const image = imageSource(product)
   const unitMargin = Math.max(0, product.mrp - product.rate)
   const marginPercent = product.mrp > 0 ? (unitMargin / product.mrp) * 100 : 0
   const quantity = Number(value) || 0
-  const details = [
-    ['Brand', product.brand],
-    ['Category', product.category],
-    ['SKU', product.sku],
-    ['Unit', product.unit],
-    ...(Number(product.gstRate) > 0 ? [['GST', `${Number(product.gstRate)}%`]] : []),
+  const rows: { label: string; value: string; numeric?: boolean }[] = [
+    { label: `Rate / ${product.unit}`, value: money(product.rate), numeric: true },
+    { label: 'MRP', value: product.mrp > 0 ? money(product.mrp) : '—', numeric: true },
+    ...(unitMargin > 0 ? [{ label: 'Margin / unit', value: `${money(unitMargin)} · ${marginPercent.toFixed(1)}%`, numeric: true }] : []),
+    ...(scheme > 0 ? [{ label: 'Scheme', value: `${scheme}%`, numeric: true }] : []),
+    ...(gst > 0 ? [{ label: 'GST', value: `${gst}%`, numeric: true }] : []),
+    { label: 'Brand', value: product.brand },
+    { label: 'Category', value: product.category },
+    { label: 'SKU', value: product.sku },
+    { label: 'Unit', value: product.unit },
   ]
   return <div className="keypad-backdrop" onClick={onClose}>
     <section className="keypad" onClick={event => event.stopPropagation()}>
@@ -339,19 +344,18 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
           <div className="keypad-heading">
             <b>{product.simpleName || product.name}</b>
             <small>{product.packing} · {product.company}</small>
-            <div className="keypad-price">
-              <strong>{money(product.rate)} <em>/{product.unit}</em></strong>
-              {product.mrp > product.rate && <s>{money(product.mrp)}</s>}
-              {scheme > 0 && <span className="scheme-chip">{scheme}% scheme</span>}
-            </div>
           </div>
         </div>
         <button onClick={onClose} aria-label="Close keypad">×</button>
       </div>
 
-      <dl className="keypad-details">
-        {details.map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}
-      </dl>
+      <div className="keypad-price">
+        <strong>{money(product.rate)} <em>/{product.unit}</em></strong>
+        {product.mrp > product.rate && <s>{money(product.mrp)}</s>}
+        {scheme > 0 && <span className="scheme-chip">{scheme}% scheme</span>}
+      </div>
+
+      <div className="keypad-display">{value || '0'}</div>
 
       {unitMargin > 0 && <div className="keypad-margin">
         <span>Retail margin<small>{marginPercent.toFixed(1)}% of MRP</small></span>
@@ -361,16 +365,22 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
         </span>
       </div>}
 
-      <div className="keypad-display">{value || '0'}</div>
       <div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div>
       <button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button>
+
+      <p className="detail-heading">Product details</p>
+      <table className="detail-table">
+        <tbody>
+          {rows.map(row => <tr key={row.label}><th scope="row">{row.label}</th><td className={row.numeric ? 'num' : ''}>{row.value}</td></tr>)}
+        </tbody>
+      </table>
     </section>
   </div>
 }
 
 function Cart({ cart, total, margin, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; margin: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
   const clear = () => { if (window.confirm('Clear all items from this cart?')) onClear() }
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.unit}`}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></div><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /><strong>{money(item.quantity * item.rate)}</strong></article>)}<div className="total"><span>Tentative total</span><b>{money(total)}</b></div>{margin > 0 && <div className="total margin-total"><span>Your retail margin<small>If sold at MRP</small></span><b>{money(margin)}</b></div>}<p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{cart.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></td><td className="num"><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /></td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total</td><td>{money(total)}</td></tr>{margin > 0 && <tr className="margin-row"><td>Your retail margin<small>If sold at MRP</small></td><td>{money(margin)}</td></tr>}</tbody></table><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
 }
 
 function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void> }) {
@@ -383,7 +393,7 @@ function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: Lo
 }
 
 function OrderSummary({ order, onBack, onRepeat, onCancel }: { order: LocalOrder; onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void>; onCancel: () => void }) {
-  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div><span className={order.status}>{order.status}</span><h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><div className="summary-items">{order.items.map(item => <div key={`${item.id}-${item.unit}`}><div><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small></div><span>{item.quantity} ×</span><strong>{money(item.quantity * item.rate)}</strong></div>)}</div><div className="summary-total"><span>Tentative total</span><b>{money(order.total)}</b></div><button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
+  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div><span className={order.status}>{order.status}</span><h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{order.items.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small></td><td className="num">{item.quantity} ×</td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total</td><td>{money(order.total)}</td></tr></tbody></table><button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
 }
 
 createRoot(document.getElementById('root')!).render(<App />)
