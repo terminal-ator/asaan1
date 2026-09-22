@@ -22,7 +22,7 @@ One small server runs everything: nginx terminates TLS and serves the built PWA,
 |---|---|---|
 | Code | `/opt/ordex` (git checkout) | owned by the `ordex` user |
 | Python env | `/opt/ordex/django_api/.venv` | gunicorn + Django from `requirements.txt` |
-| Database | `/var/lib/ordex/ordex.db` | SQLite; `DATABASE_PATH` in the env file |
+| Database | `/var/lib/ordex/ordex.db` or PostgreSQL | SQLite by default; see *Database* below |
 | Photos | `/var/lib/ordex/media` | `MEDIA_ROOT`; phone uploads |
 | Secrets | `/etc/ordex/ordex.env` | `root:ordex`, mode `640` |
 | Backups | `/var/backups/ordex` | plus offsite copy |
@@ -99,6 +99,31 @@ MEDIA_ROOT=/var/lib/ordex/media
 
 `protect-system` keeps `/usr`, `/boot` and `/etc` read-only for the service; only `/var/lib/ordex` is writable, which is where the database and photos belong.
 
+### Database: SQLite or PostgreSQL
+
+SQLite is the default and is genuinely fine at this scale — one file, backed up with `.backup`, nothing else to run. If the server already runs PostgreSQL (many shared boxes do), use it instead: it removes the single-writer limit and needs no file permissions to reason about.
+
+Create a dedicated role and database, then point the env file at it:
+
+```sh
+sudo -u postgres psql <<'SQL'
+CREATE ROLE ordex LOGIN PASSWORD 'a-long-random-password';
+CREATE DATABASE ordex OWNER ordex;
+SQL
+```
+
+In `/etc/ordex/ordex.env`, comment out `DATABASE_PATH` and add:
+
+```
+POSTGRES_DB=ordex
+POSTGRES_USER=ordex
+POSTGRES_PASSWORD=a-long-random-password
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+```
+
+`manage.py migrate` creates the schema on the first deploy. If the role cannot connect over `127.0.0.1`, check `pg_hba.conf` on the database server (`scram-sha-256` for host connections). Switching later is a copy job (`dumpdata`/`loaddata`), not a rewrite — but it is easiest before you have production orders.
+
 ## 2. First deploy
 
 ```sh
@@ -136,7 +161,7 @@ cp /opt/ordex/deploy/backup-ordex.sh /etc/cron.daily/ordex-backup
 chmod +x /etc/cron.daily/ordex-backup
 ```
 
-Nightly it takes a consistent SQLite `.backup` snapshot, tars the media folder and keeps `KEEP_DAYS` (default 14). Set `BACKUP_REMOTE` in the cron environment to also copy off the server:
+Nightly it takes a consistent database snapshot (`.backup` for SQLite, `pg_dump -Fc` for PostgreSQL), tars the media folder and keeps `KEEP_DAYS` (default 14). Set `BACKUP_REMOTE` in the cron environment to also copy off the server:
 
 ```sh
 BACKUP_REMOTE=rclone:ordex-backups          # object storage via rclone
@@ -151,6 +176,16 @@ cp /var/backups/ordex/ordex-2026-09-20.db /var/lib/ordex/ordex.db
 tar -xzf /var/backups/ordex/ordex-media-2026-09-20.tar.gz -C /var/lib
 systemctl start ordex
 curl -fsS https://orders.example.com/healthz
+```
+
+With PostgreSQL the equivalent is:
+
+```sh
+systemctl stop ordex
+sudo -u postgres dropdb ordex && sudo -u postgres createdb -O ordex ordex
+PGPASSWORD=... pg_restore -h 127.0.0.1 -U ordex -d ordex --clean --if-exists \
+  /var/backups/ordex/ordex-2026-09-20.dump
+systemctl start ordex
 ```
 
 A backup you have never restored is not a backup. Also copy the env file somewhere safe — losing `DJANGO_SECRET_KEY` only invalidates sessions, but losing the admin password means a reset.
@@ -207,7 +242,7 @@ Move when you see it, not before:
 
 | Signal | Change |
 |---|---|
-| Concurrent console users, or "database is locked" during billing hour | switch `DATABASE_ENGINE` to Postgres (compose or managed), migrate with `dumpdata`/`loaddata` |
+| Console feels slow on big reports | already covered: set `POSTGRES_DB` and move to the PostgreSQL you run |
 | Catalogue traffic grows | the PWA is already static; add a CDN in front of `/assets` and `/media` |
 | Photos fill the disk | move `MEDIA_ROOT` to object storage and serve via CDN |
 | Deploys feel risky | add CI that runs `manage.py test` + `npm run build` and only tags on green; add a staging box |
@@ -239,4 +274,5 @@ After deploying:
 | PWA serves an old build | it should not: index.html and sw.js are `no-cache`, assets are hashed. If a device is stuck, use the app menu → *Clear cache & reload* |
 | Photos upload but do not display | permissions on `/var/lib/ordex/media` (must be readable by nginx) and the `/media/` alias in nginx |
 | Static files missing after deploy | `manage.py collectstatic` ran as the wrong user, or `/static/` alias points elsewhere |
-| "database is locked" | a long report at the same time as writes; retry, and plan the Postgres move |
+| "database is locked" | a long report at the same time as writes; retry, or set `POSTGRES_DB` and move to the PostgreSQL you already run |
+| `connection to server at "127.0.0.1" failed` | PostgreSQL role password or `pg_hba.conf`; test with `psql -h 127.0.0.1 -U ordex -d ordex` |

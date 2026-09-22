@@ -31,11 +31,17 @@ PREVIOUS_REV="$(git rev-parse --short HEAD)"
 say "current revision $PREVIOUS_REV, deploying $TARGET"
 
 say "backing up the database before touching anything"
-DATABASE_PATH="$(sed -n 's/^DATABASE_PATH=//p' "$ENV_FILE" | tail -1)"
-[ -n "${DATABASE_PATH:-}" ] || DATABASE_PATH=/var/lib/ordex/ordex.db
-if [ -f "$DATABASE_PATH" ]; then
-  mkdir -p "$BACKUP_DIR"
-  sqlite3 "$DATABASE_PATH" ".backup '$BACKUP_DIR/pre-deploy-$(date +%F-%H%M).db'"
+if [ -x "$APP_DIR/deploy/backup-ordex.sh" ] || [ -f "$APP_DIR/deploy/backup-ordex.sh" ]; then
+  ENV_FILE="$ENV_FILE" BACKUP_DIR="$BACKUP_DIR" \
+    sh "$APP_DIR/deploy/backup-ordex.sh" \
+    || { echo "Pre-deploy backup failed; aborting so the database stays untouched." >&2; exit 1; }
+else
+  DATABASE_PATH="$(sed -n 's/^DATABASE_PATH=//p' "$ENV_FILE" | tail -1)"
+  [ -n "${DATABASE_PATH:-}" ] || DATABASE_PATH=/var/lib/ordex/ordex.db
+  if [ -f "$DATABASE_PATH" ]; then
+    mkdir -p "$BACKUP_DIR"
+    sqlite3 "$DATABASE_PATH" ".backup '$BACKUP_DIR/pre-deploy-$(date +%F-%H%M).db'"
+  fi
 fi
 
 say "fetching $TARGET"
