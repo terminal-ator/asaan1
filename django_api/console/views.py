@@ -6,14 +6,18 @@ import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q, Sum
+from django.forms import modelformset_factory
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -35,7 +39,7 @@ from catalogue.models import (
     HSN,
 )
 
-from .forms import ProductForm
+from .forms import ProductBulkForm, ProductForm, ShopBulkForm
 from .order_forms import OrderBillingForm
 from .shop_forms import ShopForm
 from .profile_forms import DistributorProfileForm
@@ -707,6 +711,49 @@ def products(request):
     )
 
 
+ProductBulkFormSet = modelformset_factory(Product, form=ProductBulkForm, extra=0)
+ShopBulkFormSet = modelformset_factory(Shop, form=ShopBulkForm, extra=0)
+SHEET_SIZE = 100
+
+
+def _sheet_page(request, queryset):
+    """The same page of rows for GET and for the POST that saves the sheet."""
+    number = request.POST.get("page") or request.GET.get("page") or 1
+    return Paginator(queryset, SHEET_SIZE).get_page(number)
+
+
+@login_required
+def product_bulk(request):
+    query = (request.POST.get("q") or request.GET.get("q") or "").strip()
+    products = Product.objects.select_related("company", "brand").order_by(
+        "company__name", "brand__name", "name"
+    )
+    if query:
+        products = products.filter(
+            Q(name__icontains=query)
+            | Q(simple_name__icontains=query)
+            | Q(sku__icontains=query)
+            | Q(company__name__icontains=query)
+            | Q(brand__name__icontains=query)
+        )
+    page = _sheet_page(request, products)
+    formset = ProductBulkFormSet(request.POST or None, queryset=page.object_list)
+    if request.method == "POST" and formset.is_valid():
+        updated = len(formset.save())
+        messages.success(
+            request,
+            f"{updated} product{'s' if updated != 1 else ''} updated.",
+        )
+        return redirect(
+            f"{reverse('console-product-bulk')}?q={quote(query)}&page={page.number}"
+        )
+    return render(
+        request,
+        "console/product_bulk.html",
+        {"formset": formset, "page": page, "query": query},
+    )
+
+
 @login_required
 def inventory(request):
     rows = (
@@ -1039,6 +1086,35 @@ def shops(request):
             | Q(gstin__icontains=query)
         )
     return render(request, "console/shops.html", {"shops": records[:200], "query": query})
+
+
+@login_required
+def shop_bulk(request):
+    query = (request.POST.get("q") or request.GET.get("q") or "").strip()
+    shops = Shop.objects.order_by("store_name", "mobile")
+    if query:
+        shops = shops.filter(
+            Q(store_name__icontains=query)
+            | Q(customer_name__icontains=query)
+            | Q(mobile__icontains=query)
+            | Q(gstin__icontains=query)
+        )
+    page = _sheet_page(request, shops)
+    formset = ShopBulkFormSet(request.POST or None, queryset=page.object_list)
+    if request.method == "POST" and formset.is_valid():
+        updated = len(formset.save())
+        messages.success(
+            request,
+            f"{updated} shop{'s' if updated != 1 else ''} updated.",
+        )
+        return redirect(
+            f"{reverse('console-shop-bulk')}?q={quote(query)}&page={page.number}"
+        )
+    return render(
+        request,
+        "console/shop_bulk.html",
+        {"formset": formset, "page": page, "query": query},
+    )
 
 
 @login_required

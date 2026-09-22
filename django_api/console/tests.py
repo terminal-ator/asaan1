@@ -80,6 +80,121 @@ class ConsoleOrderFlowTests(TestCase):
             self.client.get(reverse("console-dashboard")).status_code, 302
         )
 
+    def test_product_bulk_sheet_saves_prices_in_rupees(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-product-bulk"),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "1",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "1000",
+                "form-0-id": str(self.product.id),
+                "form-0-rate": "123.45",
+                "form-0-mrp": "150.00",
+                "form-0-gst_rate": "12.00",
+                "form-0-active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.rate, 12345)
+        self.assertEqual(self.product.mrp, 15000)
+        self.assertEqual(str(self.product.gst_rate), "12.00")
+
+    def test_product_bulk_sheet_keeps_previous_values_when_a_row_is_invalid(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-product-bulk"),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "1",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "1000",
+                "form-0-id": str(self.product.id),
+                "form-0-rate": "not-a-price",
+                "form-0-mrp": "150.00",
+                "form-0-gst_rate": "12.00",
+                "form-0-active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.rate, 10000)
+        self.assertContains(response, "Enter a number.")
+
+    def test_product_bulk_sheet_only_lists_matching_rows(self):
+        other = Product.objects.create(
+            sku="SKU-2",
+            name="Other product",
+            company=self.product.company,
+            brand=self.product.brand,
+            category=self.product.category,
+            packing="Case",
+            unit="case",
+            rate=5000,
+            mrp=6000,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("console-product-bulk"), {"q": "Other"})
+        content = response.content.decode()
+        self.assertContains(response, "Other product")
+        self.assertNotIn("Test product</p>", content)
+        self.assertIn(str(other.sku), content)
+
+    def test_shop_bulk_sheet_updates_contact_details(self):
+        shop = Shop.objects.create(
+            store_name="Old name",
+            customer_name="Old contact",
+            mobile="9000000000",
+            address="Old road",
+        )
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-shop-bulk"),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "1",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "1000",
+                "form-0-id": str(shop.pk),
+                "form-0-store_name": "New name",
+                "form-0-customer_name": "New contact",
+                "form-0-mobile": "9111111111",
+                "form-0-gstin": "27ABCDE1234F1Z5",
+                "form-0-state": "Maharashtra",
+                "form-0-address": "New road",
+                "form-0-active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        shop.refresh_from_db()
+        self.assertEqual(shop.store_name, "New name")
+        self.assertEqual(shop.mobile, "9111111111")
+        self.assertEqual(shop.state, "Maharashtra")
+        self.assertTrue(shop.active)
+
+    def test_shop_bulk_sheet_requires_name_and_mobile(self):
+        shop = Shop.objects.create(store_name="Old name", mobile="9000000000")
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-shop-bulk"),
+            {
+                "form-TOTAL_FORMS": "1",
+                "form-INITIAL_FORMS": "1",
+                "form-MIN_NUM_FORMS": "0",
+                "form-MAX_NUM_FORMS": "1000",
+                "form-0-id": str(shop.pk),
+                "form-0-store_name": "",
+                "form-0-mobile": "",
+                "form-0-active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        shop.refresh_from_db()
+        self.assertEqual(shop.store_name, "Old name")
+        self.assertEqual(shop.mobile, "9000000000")
+
     def test_shop_form_requires_name_and_mobile(self):
         self.client.force_login(self.user)
         response = self.client.post(

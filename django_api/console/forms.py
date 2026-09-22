@@ -2,7 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
 
-from catalogue.models import Brand, Category, Company, HSN, Product
+from catalogue.models import Brand, Category, Company, HSN, Product, Shop
 
 
 class ProductForm(forms.ModelForm):
@@ -90,3 +90,73 @@ class ProductForm(forms.ModelForm):
                 attrs={"placeholder": "Rupees, e.g. 2160.00"}
             ),
         }
+
+
+SHEET_INPUT = (
+    "w-full min-w-[104px] rounded-lg border border-slate-300 bg-white px-2.5 py-2 "
+    "text-sm outline-none transition focus:border-brand-500 focus:ring-4 "
+    "focus:ring-brand-100"
+)
+SHEET_CHECKBOX = "h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+SHEET_INPUT_WIDE = SHEET_INPUT.replace("min-w-[104px]", "min-w-[208px]")
+
+
+class ProductBulkForm(forms.ModelForm):
+    """One row of the product sheet. Prices are entered in rupees, stored in paise."""
+
+    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Rate (₹)")
+    mrp = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="MRP (₹)")
+
+    class Meta:
+        model = Product
+        fields = ["rate", "mrp", "gst_rate", "active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.initial["rate"] = Decimal(self.instance.rate) / 100
+            self.initial["mrp"] = Decimal(self.instance.mrp) / 100
+        for name, field in self.fields.items():
+            field.widget.attrs.setdefault(
+                "class",
+                SHEET_CHECKBOX if isinstance(field.widget, forms.CheckboxInput) else SHEET_INPUT,
+            )
+            field.widget.attrs["data-column"] = name
+
+    def save(self, commit=True):
+        product = super().save(commit=False)
+        product.rate = int(
+            (self.cleaned_data["rate"] * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+        product.mrp = int(
+            (self.cleaned_data["mrp"] * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+        if commit:
+            product.save()
+        return product
+
+
+class ShopBulkForm(forms.ModelForm):
+    """One row of the shop sheet. Location coordinates are edited individually."""
+
+    class Meta:
+        model = Shop
+        fields = [
+            "store_name",
+            "customer_name",
+            "mobile",
+            "gstin",
+            "state",
+            "address",
+            "active",
+        ]
+        widgets = {"address": forms.TextInput(attrs={"class": SHEET_INPUT_WIDE})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            field.widget.attrs.setdefault(
+                "class",
+                SHEET_CHECKBOX if isinstance(field.widget, forms.CheckboxInput) else SHEET_INPUT,
+            )
+            field.widget.attrs["data-column"] = name

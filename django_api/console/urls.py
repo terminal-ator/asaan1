@@ -78,6 +78,7 @@ urlpatterns = [
     path("reports/gst.csv", views.gst_report_csv, name="console-gst-report-csv"),
     path("shops", views.shops, name="console-shops"),
     path("shops/new", views.shop_edit, name="console-shop-new"),
+    path("shops/bulk", views.shop_bulk, name="console-shop-bulk"),
     path("shops/<int:shop_id>/edit", views.shop_edit, name="console-shop-edit"),
     path("shops/<int:shop_id>/delete", views.shop_delete, name="console-shop-delete"),
     path("settings/invoice", views.invoice_settings, name="console-invoice-settings"),
@@ -92,6 +93,11 @@ urlpatterns = [
         "products/import",
         views.product_import,
         name="console-product-import",
+    ),
+    path(
+        "products/bulk",
+        views.product_bulk,
+        name="console-product-bulk",
     ),
     path(
         "products/import/template.csv",

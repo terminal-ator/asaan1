@@ -42,6 +42,10 @@ Vite serves the PWA on `http://localhost:5173` and proxies `/api` and `/media` t
 
 Set `VITE_API_URL` only when the PWA and API are on different origins.
 
+## Bulk editing
+
+Products and Customers each have a **Bulk edit** sheet (`/console/products/bulk`, `/console/shops/bulk`) for updating many rows at once: rates and MRP in rupees, GST %, availability, and shop contact/GST details. Each sheet is paginated at 100 rows, filtered by the same search as the list pages, saves all rows together, shows inline errors, flags unsaved changes before leaving, and supports Enter-to-move-down plus Ctrl/⌘+S to save.
+
 ## Endpoints
 
 - `GET /api/catalogue` — active products for the PWA.

@@ -1,4 +1,5 @@
 {% extends 'console/base.html' %}
+{% load console_tags %}
 
 {% block content %}
 <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
@@ -14,6 +15,10 @@
       <a class="inline-flex w-fit items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600"
          href="{% url 'console-product-import' %}">
         Import CSV
+      </a>
+      <a class="inline-flex w-fit items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600"
+         href="{% url 'console-product-bulk' %}">
+        Bulk edit
       </a>
       <a class="inline-flex w-fit items-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
          href="{% url 'console-product-new' %}">
@@ -56,7 +61,7 @@
             <td class="px-4 py-4 text-slate-600">
               {{ product.company }} / {{ product.brand }}
             </td>
-            <td class="px-4 py-4 font-semibold">{{ product.rate }}</td>
+            <td class="px-4 py-4 font-semibold">₹{{ product.rate|rupees }}</td>
             <td class="px-4 py-4">
               <span class="rounded-full px-2.5 py-1 text-xs font-semibold {% if product.active %}bg-brand-50 text-brand-600{% else %}bg-slate-100 text-slate-500{% endif %}">
                 {{ product.active|yesno:'Yes,No' }}
