@@ -38,6 +38,7 @@ ENV_FILE="$ENV_DIR/asaan.env"
 GUNICORN_PORT="${GUNICORN_PORT:-8123}"
 DB="${DB:-sqlite}"
 PROXY="${PROXY:-caddy}"
+SERVICE="${SERVICE:-asaan}"
 SITE_HOST="${SITE_HOST:-}"
 # Extra hostnames to serve (comma separated), e.g. a sslip.io name for testing
 # before DNS is pointed, or www.asaan.in.
@@ -190,6 +191,10 @@ EOF
 fi
 chown root:"$APP_GROUP" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
+# systemd only re-reads EnvironmentFile on restart, not on reload.
+if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+  systemctl restart "$SERVICE" || true
+fi
 
 say "systemd unit"
 sed -e "s|/opt/asaan|$APP_DIR|g" -e "s|/var/lib/asaan|$DATA_DIR|g" \
