@@ -77,9 +77,13 @@ else
   command -v certbot >/dev/null 2>&1 || apt-get install -y -qq certbot python3-certbot-nginx
 fi
 
-if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v\([0-9]*\).*/\1/')" -lt 18 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y -qq nodejs
+if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
+  if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/^v\([0-9]*\).*/\1/')" -lt 18 ]; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y -qq nodejs
+  fi
+else
+  echo "PWA is shipped prebuilt; skipping Node on the server"
 fi
 if [ "$DB" = "postgres" ]; then apt-get install -y -qq postgresql postgresql-client; fi
 
@@ -236,15 +240,15 @@ else
 fi
 
 say "done"
+install -m 755 "$APP_DIR/deploy/backup-asaan.sh" /etc/cron.daily/asaan-backup
 cat <<EOF
 Asaan is running at $URL
 
 Remaining steps:
-  1. Cloud firewall: allow 80 and 443 (Lightsail -> Networking -> IPv4 Firewall).
+  1. Cloud firewall: allow 80 and 443 (OVH VPS are open by default; other clouds
+     need a rule).
   2. Admin user:
        sudo -u $APP_USER sh -c 'cd $APP_DIR/django_api && .venv/bin/python manage.py createsuperuser'
-  3. Nightly backups:
-       sudo cp $APP_DIR/deploy/backup-asaan.sh /etc/cron.daily/asaan-backup
-  4. Attach a static IP and enable automatic snapshots in the cloud console.
-  5. Health checks: point an uptime monitor at $URL/healthz
+  3. Nightly backups are installed at /etc/cron.daily/asaan-backup.
+  4. Health checks: point an uptime monitor at $URL/healthz
 EOF
