@@ -198,8 +198,11 @@ sed -e "s|/opt/asaan|$APP_DIR|g" -e "s|/var/lib/asaan|$DATA_DIR|g" \
 if [ "$PROXY" = "caddy" ]; then
   say "caddy site"
   install -d /etc/caddy
-  sed -e "s/^asaan\.in {/$ALL_HOSTS {/" \
-      -e "s/asaan\.in/$SITE_HOST/g" \
+  # Caddy separates site addresses with ", " and nginx with spaces.
+  CADDY_HOSTS="$(printf '%s' "$ALL_HOSTS" | sed 's/,/, /g')"
+  SITE_PATTERN="$(printf '%s' "$SITE_HOST" | sed 's/\./\\./g')"
+  sed -e "s/asaan\.in/$SITE_HOST/g" \
+      -e "s/^$SITE_PATTERN {/$CADDY_HOSTS {/" \
       -e "s|/opt/asaan|$APP_DIR|g" \
       -e "s|/var/lib/asaan|$DATA_DIR|g" \
       "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
@@ -211,7 +214,8 @@ if [ "$PROXY" = "caddy" ]; then
   caddy validate --config /etc/caddy/Caddyfile
 else
   say "nginx site"
-  sed -e "s/server_name asaan\.in;/server_name $ALL_HOSTS;/" \
+  NGINX_HOSTS="$(printf '%s' "$ALL_HOSTS" | tr ',' ' ')"
+  sed -e "s/server_name asaan\.in;/server_name $NGINX_HOSTS;/" \
       -e "s/asaan\.in/$SITE_HOST/g" \
       -e "s|/opt/asaan|$APP_DIR|g" \
       -e "s|/var/lib/asaan|$DATA_DIR|g" \
