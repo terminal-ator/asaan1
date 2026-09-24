@@ -23,6 +23,13 @@ RSYNC_SSH="${RSYNC_SSH:-ssh}"
 SSH_OPTS="${SSH_OPTS:-}"
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# OVH and similar providers hand you root; anything else needs sudo for the
+# rsync receiver and the remote deploy.
+case "$TARGET" in
+  root@*) REMOTE_RSYNC="rsync"; REMOTE_SUDO="" ;;
+  *) REMOTE_RSYNC="sudo rsync"; REMOTE_SUDO="sudo " ;;
+esac
+
 say() { printf '\n==> %s\n' "$1"; }
 
 cd "$LOCAL_DIR"
@@ -38,7 +45,7 @@ npm run build
 say "shipping code and dist to $TARGET:$APP_DIR"
 ship() {
   rsync -az --delete -e "$RSYNC_SSH $SSH_OPTS" \
-    --rsync-path="sudo rsync" --chown="$APP_USER:$APP_USER" \
+    --rsync-path="$REMOTE_RSYNC" --chown="$APP_USER:$APP_USER" \
     --exclude=node_modules \
     --exclude=django_api/.venv \
     --exclude=__pycache__ \
@@ -66,6 +73,6 @@ fi
 say "deploying on the server"
 # shellcheck disable=SC2029
 ssh $SSH_OPTS "$TARGET" \
-  "sudo APP_DIR='$APP_DIR' APP_USER='$APP_USER' SKIP_FRONTEND=1 sh '$APP_DIR/deploy/deploy.sh'"
+  "${REMOTE_SUDO}APP_DIR='$APP_DIR' APP_USER='$APP_USER' SKIP_FRONTEND=1 sh '$APP_DIR/deploy/deploy.sh'"
 
 say "done"
