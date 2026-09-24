@@ -57,6 +57,16 @@ if [ -z "$SITE_HOST" ]; then
   echo "no SITE_HOST given; using $SITE_HOST (sslip.io resolves to this server)"
 fi
 
+say "ports"
+port_busy() { ss -ltn 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { found=1 } END { exit !found }'; }
+if [ "$PROXY" = "caddy" ]; then
+  if port_busy 80 || port_busy 443; then
+    die "ports 80 or 443 are already in use. For a box that already runs nginx use PROXY=nginx."
+  fi
+else
+  echo "using the existing nginx; Asaan becomes another virtual host on 80/443"
+fi
+
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -86,16 +96,6 @@ else
   echo "PWA is shipped prebuilt; skipping Node on the server"
 fi
 if [ "$DB" = "postgres" ]; then apt-get install -y -qq postgresql postgresql-client; fi
-
-say "ports"
-port_busy() { ss -ltn 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { found=1 } END { exit !found }'; }
-if [ "$PROXY" = "caddy" ]; then
-  if port_busy 80 || port_busy 443; then
-    die "ports 80 or 443 are already in use. For a box that already runs nginx use PROXY=nginx."
-  fi
-else
-  echo "using the existing nginx; Asaan becomes another virtual host on 80/443"
-fi
 
 say "service account and directories"
 id -u "$APP_USER" >/dev/null 2>&1 || adduser --system --group --home "$APP_DIR" "$APP_USER"
