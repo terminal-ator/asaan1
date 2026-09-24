@@ -11,6 +11,8 @@
 #
 #   SITE_HOST      public hostname; defaults to <public-ip>.sslip.io
 #   EMAIL          ACME contact address (optional, recommended)
+#   EXTRA_HOSTS    extra hostnames to serve, comma separated (e.g. a sslip.io
+#                  name for testing before DNS, or www.asaan.in)
 #   PROXY          caddy (default, needs ports 80/443) or nginx (existing server)
 #   DB             sqlite (default) or postgres
 #   APP_DIR        /opt/asaan
@@ -37,6 +39,9 @@ GUNICORN_PORT="${GUNICORN_PORT:-8123}"
 DB="${DB:-sqlite}"
 PROXY="${PROXY:-caddy}"
 SITE_HOST="${SITE_HOST:-}"
+# Extra hostnames to serve (comma separated), e.g. a sslip.io name for testing
+# before DNS is pointed, or www.asaan.in.
+EXTRA_HOSTS="${EXTRA_HOSTS:-}"
 EMAIL="${EMAIL:-}"
 REPO_URL="${REPO_URL:-}"
 SKIP_FIREWALL="${SKIP_FIREWALL:-0}"
@@ -55,6 +60,16 @@ if [ -z "$SITE_HOST" ]; then
   [ -n "$ip" ] || die "could not detect the public IP; pass SITE_HOST=..."
   SITE_HOST="$(printf '%s' "$ip" | tr '.' '-').sslip.io"
   echo "no SITE_HOST given; using $SITE_HOST (sslip.io resolves to this server)"
+fi
+
+# Hosts the app answers for: the primary name, any extras, and loopback.
+ALL_HOSTS="$SITE_HOST"
+CSRF_ORIGINS="https://$SITE_HOST"
+if [ -n "$EXTRA_HOSTS" ]; then
+  ALL_HOSTS="$SITE_HOST,$EXTRA_HOSTS"
+  for host in $(printf '%s' "$EXTRA_HOSTS" | tr ',' ' '); do
+    CSRF_ORIGINS="$CSRF_ORIGINS,https://$host"
+  done
 fi
 
 say "ports"
@@ -154,13 +169,18 @@ fi
 
 say "configuration"
 if [ -f "$ENV_FILE" ]; then
-  echo "$ENV_FILE already exists; leaving it alone"
+  echo "$ENV_FILE already exists; refreshing the host list"
+  sed -i \
+    -e "s|^DJANGO_ALLOWED_HOSTS=.*|DJANGO_ALLOWED_HOSTS=$ALL_HOSTS,127.0.0.1|" \
+    -e "s|^DJANGO_CSRF_TRUSTED_ORIGINS=.*|DJANGO_CSRF_TRUSTED_ORIGINS=$CSRF_ORIGINS|" "$ENV_FILE"
+  grep -q '^DJANGO_ALLOWED_HOSTS=' "$ENV_FILE" || printf 'DJANGO_ALLOWED_HOSTS=%s\n' "$ALL_HOSTS,127.0.0.1" >> "$ENV_FILE"
+  grep -q '^DJANGO_CSRF_TRUSTED_ORIGINS=' "$ENV_FILE" || printf 'DJANGO_CSRF_TRUSTED_ORIGINS=%s\n' "$CSRF_ORIGINS" >> "$ENV_FILE"
 else
   cat > "$ENV_FILE" <<EOF
 DJANGO_SECRET_KEY=$(openssl rand -hex 48)
 DJANGO_DEBUG=false
-DJANGO_ALLOWED_HOSTS=$SITE_HOST,127.0.0.1
-DJANGO_CSRF_TRUSTED_ORIGINS=https://$SITE_HOST
+DJANGO_ALLOWED_HOSTS=$ALL_HOSTS,127.0.0.1
+DJANGO_CSRF_TRUSTED_ORIGINS=$CSRF_ORIGINS
 # Flipped to true automatically once HTTPS is working.
 DJANGO_SECURE_COOKIES=false
 GUNICORN_PORT=$GUNICORN_PORT
@@ -178,7 +198,8 @@ sed -e "s|/opt/asaan|$APP_DIR|g" -e "s|/var/lib/asaan|$DATA_DIR|g" \
 if [ "$PROXY" = "caddy" ]; then
   say "caddy site"
   install -d /etc/caddy
-  sed -e "s/asaan\.in/$SITE_HOST/g" \
+  sed -e "s/^asaan\.in {/$ALL_HOSTS {/" \
+      -e "s/asaan\.in/$SITE_HOST/g" \
       -e "s|/opt/asaan|$APP_DIR|g" \
       -e "s|/var/lib/asaan|$DATA_DIR|g" \
       "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
@@ -190,7 +211,8 @@ if [ "$PROXY" = "caddy" ]; then
   caddy validate --config /etc/caddy/Caddyfile
 else
   say "nginx site"
-  sed -e "s/asaan\.in/$SITE_HOST/g" \
+  sed -e "s/server_name asaan\.in;/server_name $ALL_HOSTS;/" \
+      -e "s/asaan\.in/$SITE_HOST/g" \
       -e "s|/opt/asaan|$APP_DIR|g" \
       -e "s|/var/lib/asaan|$DATA_DIR|g" \
       "$APP_DIR/deploy/nginx.conf" > /etc/nginx/sites-available/asaan
