@@ -29,13 +29,27 @@ asaan.in {
 
 	# Everything dynamic goes to gunicorn on loopback. Caddy sets the
 	# X-Forwarded-* headers itself, which Django needs for CSRF and cookies.
+	# The bare paths (no trailing slash) are included so Django can answer with
+	# its own redirect instead of the PWA shell being served for them.
+	handle /api {
+		reverse_proxy 127.0.0.1:8123
+	}
 	handle /api/* {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /console {
 		reverse_proxy 127.0.0.1:8123
 	}
 	handle /console/* {
 		reverse_proxy 127.0.0.1:8123
 	}
+	handle /admin {
+		reverse_proxy 127.0.0.1:8123
+	}
 	handle /admin/* {
+		reverse_proxy 127.0.0.1:8123
+	}
+	handle /logout {
 		reverse_proxy 127.0.0.1:8123
 	}
 	handle /logout/ {

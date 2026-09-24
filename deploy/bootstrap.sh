@@ -216,6 +216,27 @@ if [ "$PROXY" = "caddy" ]; then
     cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.tmp
     mv /etc/caddy/Caddyfile.tmp /etc/caddy/Caddyfile
   fi
+  # Typing the server's bare IP should land somewhere useful. Send it to a
+  # hostname that has a certificate; a sslip.io alias wins because it works
+  # even before the real DNS record exists.
+  public_ip="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
+  if [ -n "$public_ip" ]; then
+    redir_host="$SITE_HOST"
+    case ",$EXTRA_HOSTS," in
+      *".sslip.io,"*)
+        for host in $(printf '%s' "$EXTRA_HOSTS" | tr ',' ' '); do
+          case "$host" in *.sslip.io) redir_host="$host"; break ;; esac
+        done
+        ;;
+    esac
+    cat >> /etc/caddy/Caddyfile <<EOF
+
+# Requests to the bare IP land on the real hostname.
+http://$public_ip {
+	redir https://$redir_host{uri} permanent
+}
+EOF
+  fi
   caddy validate --config /etc/caddy/Caddyfile
 else
   say "nginx site"
