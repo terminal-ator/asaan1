@@ -114,7 +114,7 @@ install -d /var/backups/asaan
 
 say "code"
 if [ -d "$APP_DIR/.git" ]; then
-  if [ -n "$(git -C "$APP_DIR" remote 2>/dev/null || true)" ]; then
+  if [ -n "$(runuser -u "$APP_USER" -- git -C "$APP_DIR" remote 2>/dev/null || true)" ]; then
     runuser -u "$APP_USER" -- git -C "$APP_DIR" pull --ff-only || true
   else
     echo "checkout has no git remote (shipped with deploy/ship.sh); using it as it is"

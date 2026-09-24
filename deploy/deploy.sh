@@ -30,12 +30,17 @@ as_user() {
   if [ "$(id -u)" = "0" ]; then runuser -u "$APP_USER" -- sh -c "$1"; else sh -c "$1"; fi
 }
 has_git_remote() {
-  [ -d "$APP_DIR/.git" ] && [ -n "$(git -C "$APP_DIR" remote 2>/dev/null || true)" ]
+  [ -d "$APP_DIR/.git" ] || return 1
+  # Ask as the app user: root reading a repo it does not own trips git's
+  # ownership check.
+  [ -n "$(as_user "git -C '$APP_DIR' remote 2>/dev/null" || true)" ]
 }
 
 cd "$APP_DIR"
 PREVIOUS_REV=""
-if [ -d .git ]; then PREVIOUS_REV="$(git rev-parse --short HEAD)"; fi
+if [ -d .git ]; then
+  PREVIOUS_REV="$(as_user "git -C '$APP_DIR' rev-parse --short HEAD 2>/dev/null" || true)"
+fi
 say "current revision ${PREVIOUS_REV:-none (rsync deploy)}, deploying $TARGET"
 
 say "backing up the database before touching anything"
