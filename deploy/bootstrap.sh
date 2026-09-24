@@ -58,10 +58,17 @@ if [ -z "$SITE_HOST" ]; then
 fi
 
 say "ports"
-port_busy() { ss -ltn 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { found=1 } END { exit !found }'; }
+# Fail only when something other than our own Caddy holds the port; a re-run
+# finds Caddy already listening with the config from last time.
+busy_by_other() {
+  owner="$(ss -ltnp 2>/dev/null | awk -v p=":$1\$" '$4 ~ p { print $NF; exit }')"
+  [ -n "$owner" ] || return 1
+  case "$owner" in *'"caddy"'*) return 1 ;; esac
+  return 0
+}
 if [ "$PROXY" = "caddy" ]; then
-  if port_busy 80 || port_busy 443; then
-    die "ports 80 or 443 are already in use. For a box that already runs nginx use PROXY=nginx."
+  if busy_by_other 80 || busy_by_other 443; then
+    die "ports 80 or 443 are already in use by another service. For a box that already runs nginx use PROXY=nginx."
   fi
 else
   echo "using the existing nginx; Asaan becomes another virtual host on 80/443"
