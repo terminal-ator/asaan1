@@ -70,10 +70,14 @@ as_user "'$PIP' install --quiet --upgrade pip"
 as_user "'$PIP' install --quiet -r '$APP_DIR/django_api/requirements.txt'"
 
 say "applying migrations"
-as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py migrate --noinput"
+# manage.sh loads /etc/asaan/asaan.env, so management commands use the same
+# database as the service (a bare `manage.py` would fall back to SQLite).
+as_user "cd '$APP_DIR' && ENV_FILE='$ENV_FILE' sh ./deploy/manage.sh migrate --noinput"
+as_user "cd '$APP_DIR' && ENV_FILE='$ENV_FILE' sh ./deploy/manage.sh migrate --check" \
+  || die "migrations did not apply cleanly; check the database settings in $ENV_FILE"
 
 say "collecting static files"
-as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py collectstatic --noinput --clear"
+as_user "cd '$APP_DIR' && ENV_FILE='$ENV_FILE' sh ./deploy/manage.sh collectstatic --noinput --clear"
 
 if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
   say "building the PWA"
@@ -102,7 +106,7 @@ if [ -n "$PREVIOUS_REV" ]; then
   say "HEALTH CHECK FAILED, rolling back to $PREVIOUS_REV"
   as_user "git -C '$APP_DIR' checkout --force '$PREVIOUS_REV'"
   as_user "'$PIP' install --quiet -r '$APP_DIR/django_api/requirements.txt'"
-  as_user "cd '$APP_DIR/django_api' && '$PYTHON' manage.py collectstatic --noinput --clear"
+  as_user "cd '$APP_DIR' && ENV_FILE='$ENV_FILE' sh ./deploy/manage.sh collectstatic --noinput --clear"
   if [ "${SKIP_FRONTEND:-0}" != "1" ]; then
     as_user "cd '$APP_DIR' && npm ci --silent && npm run build"
   fi
