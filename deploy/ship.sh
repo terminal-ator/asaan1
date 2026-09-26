@@ -43,6 +43,7 @@ say "building the PWA here"
 npm run build
 
 say "shipping code and dist to $TARGET:$APP_DIR"
+# .git is left alone: the server keeps its own history, remote and deploy key.
 ship() {
   rsync -az --delete -e "$RSYNC_SSH $SSH_OPTS" \
     --rsync-path="$REMOTE_RSYNC" --chown="$APP_USER:$APP_USER" \
@@ -56,6 +57,7 @@ ship() {
     --exclude=django_api/staticfiles \
     --exclude=uploads \
     --exclude=.env.local \
+    --exclude=.git \
     "$@" ./ "$TARGET:$APP_DIR/"
 }
 if [ "$DRY_RUN" = "1" ]; then ship --dry-run; else ship; fi
