@@ -10,8 +10,8 @@ own procedure (see below). The Lightsail box stays running.
 | Domain | App | How it runs | Decision |
 |---|---|---|---|
 | `orders.rologe.com` | prorder-admin (Node/Express) | **Docker** `prorder-admin:latest`, `restart=unless-stopped`, publishes `3100 -> 3000`, mounts `/var/lib/prorder:/data`, SQLite | **migrate** |
-| `qr.rologe.com` | rserver (Node) + static files | bare process, no service manager | **stays on Lightsail** |
-| `dashboard.rologe.com` | rserver (`/`, `/*`), xltron (`/api`), exart (`/gql`) | bare processes; `/dash` upstream (5005) already dead | **stays on Lightsail** |
+| `qr.rologe.com` | static SPA in `/var/www/qr.rologe.com` (the `rserver` Node process on :3000 is the *dashboard's* old frontend) | nginx serves the static build | **ported to `qr.asaan.in`** — see `deploy/qr-app/`; the old vhost stays up until it is retired |
+| `dashboard.rologe.com` | rserver (`/`, `/*`), xltron (`/api`), exart (`/gql`) | bare processes; `/dash` upstream (5005) already dead | **stays on Lightsail** (exart retired) |
 | ProBooks/xltron data | PostgreSQL database `postgres` on Lightsail | — | **its own doc**: `project/probooks/xltron/deploy/DEPLOY.md` |
 | keymint | CRA app, not running, not served | — | ignore |
 

@@ -1,0 +1,29 @@
+
+# >>> qr (static SPA for shops; its GraphQL API is served by ProBooks at /gql)
+qr.asaan.in, qr.51-79-144-234.sslip.io {
+	log
+
+	encode zstd gzip
+
+	# Create React App output under /assets is content-hashed.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	# The SPA signs in and then calls GraphQL on /gql.
+	handle /gql* {
+		reverse_proxy 127.0.0.1:8130
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8130
+	}
+
+	handle {
+		root * /var/www/qr.asaan.in
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
+# <<< qr
