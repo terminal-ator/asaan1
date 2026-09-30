@@ -57,7 +57,9 @@ else
   fi
 fi
 
-if has_git_remote; then
+if [ "${SKIP_GIT:-0}" = "1" ]; then
+  say "using the code as synced by deploy/ship.sh"
+elif has_git_remote; then
   say "fetching $TARGET"
   as_user "git -C '$APP_DIR' fetch --all --tags --prune"
   as_user "git -C '$APP_DIR' checkout --force '$TARGET'"

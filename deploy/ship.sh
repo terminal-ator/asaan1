@@ -73,8 +73,10 @@ if [ "$SKIP_DEPLOY" = "1" ]; then
 fi
 
 say "deploying on the server"
+# SKIP_GIT: the code just came over rsync, so the deploy should not try to fetch
+# from GitHub (which may not have the server's deploy key yet).
 # shellcheck disable=SC2029
 ssh $SSH_OPTS "$TARGET" \
-  "${REMOTE_SUDO}APP_DIR='$APP_DIR' APP_USER='$APP_USER' SKIP_FRONTEND=1 sh '$APP_DIR/deploy/deploy.sh'"
+  "${REMOTE_SUDO}APP_DIR='$APP_DIR' APP_USER='$APP_USER' SKIP_FRONTEND=1 SKIP_GIT=1 sh '$APP_DIR/deploy/deploy.sh'"
 
 say "done"
