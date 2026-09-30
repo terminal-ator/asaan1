@@ -269,8 +269,10 @@ fi
 say "first deploy"
 systemctl daemon-reload
 systemctl enable asaan >/dev/null
+# A shipped frontend implies the code was shipped too, so do not require git.
+if [ "${SKIP_FRONTEND:-0}" = "1" ]; then SKIP_GIT="${SKIP_GIT:-1}"; else SKIP_GIT="${SKIP_GIT:-0}"; fi
 APP_DIR="$APP_DIR" APP_USER="$APP_USER" ENV_FILE="$ENV_FILE" \
-  SKIP_FRONTEND="${SKIP_FRONTEND:-0}" sh "$APP_DIR/deploy/deploy.sh"
+  SKIP_FRONTEND="${SKIP_FRONTEND:-0}" SKIP_GIT="$SKIP_GIT" sh "$APP_DIR/deploy/deploy.sh"
 
 say "https"
 if [ "$PROXY" = "caddy" ]; then
