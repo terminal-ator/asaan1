@@ -1,92 +1,76 @@
 # Migrating the Lightsail apps to OVHcloud
 
-Inventory taken read-only from `ubuntu@13.233.243.133` on 2026-09-24, and the plan
-for moving each piece to the new OVH VPS. The Lightsail box stays running until the
-new one has been verified for at least a week.
+Inventory taken read-only from `ubuntu@13.233.243.133`, updated 30 Sep 2026 after
+the scope was cut down: **only `orders.rologe.com` moves.** `qr.rologe.com` and
+`dashboard.rologe.com` stay on Lightsail, and the ProBooks data migration has its
+own procedure (see below). The Lightsail box stays running.
 
 ## What is running today
 
-| Domain | App | How it runs now | Code | Data |
-|---|---|---|---|---|
-| `orders.rologe.com` | prorder-admin (Node/Express) | **Docker** `prorder-admin:latest`, `restart=unless-stopped`, publishes `3100 -> 3000`, mounts `/var/lib/prorder:/data` | `/var/www/prorder-admin` (only `.env` left; code lives in the image) | SQLite `/var/lib/prorder/prorder.db`; nightly cron `backup-db.sh` → `/home/ubuntu/prorder-backups` |
-| `qr.rologe.com` | rserver (Node, `node index.js`) | **bare process**, no service manager | `/home/ubuntu/probooks/rserver` (11 MB), second copy under `documents/probooks/` | static files in `/var/www/qr.rologe.com` |
-| `dashboard.rologe.com` | xltron (Go) | **bare process started with `go run`** — the running binary is `/tmp/go-build.../xltron` | `/home/ubuntu/probooks/xltron` (git: terminal-ator/xltron) and a second copy in `documents/probooks/` (94 MB) | Postgres |
-| `dashboard.rologe.com` `/gql` | exart (Node + `@babel/node`, runs `src/index.js` as a dev-mode process) | **bare process** | `/home/ubuntu/probooks/exart` (151 MB, git: terminal-ator/exart) | Postgres |
-| `dashboard.rologe.com` `/dash` | *nothing* — `proxy_pass http://localhost:5005`, no listener | dead upstream | — | — |
-| — | keymint (CRA app) | not running, not referenced by nginx | `/home/ubuntu/documents/probooks/keymint` (749 MB) | — |
+| Domain | App | How it runs | Decision |
+|---|---|---|---|
+| `orders.rologe.com` | prorder-admin (Node/Express) | **Docker** `prorder-admin:latest`, `restart=unless-stopped`, publishes `3100 -> 3000`, mounts `/var/lib/prorder:/data`, SQLite | **migrate** |
+| `qr.rologe.com` | rserver (Node) + static files | bare process, no service manager | **stays on Lightsail** |
+| `dashboard.rologe.com` | rserver (`/`, `/*`), xltron (`/api`), exart (`/gql`) | bare processes; `/dash` upstream (5005) already dead | **stays on Lightsail** |
+| ProBooks/xltron data | PostgreSQL database `postgres` on Lightsail | — | **its own doc**: `project/probooks/xltron/deploy/DEPLOY.md` |
+| keymint | CRA app, not running, not served | — | ignore |
 
 Other facts:
 
-- **nginx 1.14** serves the three vhosts; certbot certificates exist for all three domains (expiring Oct–Dec 2026).
-- **PostgreSQL 10.23** on `0.0.0.0:5432`. Databases with real data: `postgres` (70 tables — `posting`, `statement`, `journal`, i.e. an accounting schema), `crash_course` (10), `wholeshop` (8), `new_log` (6). Roles: `adminone`, `administrator`, `postgres`.
-- **DNS for rologe.com is at GoDaddy** (`ns05/ns06.domaincontrol.com`); the apex points at Vercel, the three subdomains at the Lightsail IP.
-- Node is installed via nvm under `/home/ubuntu` (v12.4.0 in use by exart).
-- Junk in `/home/ubuntu` that does not need migrating: `bkp.sql` (16 MB), `bkp_now.sql` (90 MB), `f_bkp_0401.sql` (90 MB), `go.tar.gz` (116 MB), `go/` (136 MB), `documents/` (1 GB).
+- **PostgreSQL 10** on Lightsail is now **loopback-only** (a persistent firewall rule
+  blocks external 5432; it was publicly reachable before).
+- DNS for rologe.com is at **GoDaddy** (`ns05/ns06.domaincontrol.com`); the apex points
+  at Vercel, the subdomains at the Lightsail IP.
+- The names `orders.asaan.in`, `karm.asaan.in` and `probook.asaan.in` are already
+  configured on the OVH box (Caddy), alongside Asaan, Karmos and ProBooks.
 
-### 🔴 Do this immediately
-
-`13.233.243.133:5432` is **reachable from the internet**. Open PostgreSQL is scanned
-constantly and is a common ransomware target. Remove the `5432` rule in the Lightsail
-console (*Networking → IPv4 Firewall*) now; if anything connects from outside the box,
-tell me first and I will restrict it to that address instead.
-
-## Target layout on the OVH VPS (4 GB / 40 GB)
+## Target on the OVH box (51.79.144.234)
 
 ```
-nginx (host)
-├── orders.asaan.in        -> 127.0.0.1:8123  gunicorn   (Asaan, new)
-├── orders.rologe.com      -> 127.0.0.1:3100  prorder-admin
-├── qr.rologe.com          -> 127.0.0.1:3000  rserver      + /var/www/qr.rologe.com
-└── dashboard.rologe.com   -> /     127.0.0.1:3000  rserver
-                             /api  127.0.0.1:8080  xltron
-                             /gql  127.0.0.1:4000  exart
-PostgreSQL 16 on 127.0.0.1 only
+Caddy
+├── orders.asaan.in   -> 127.0.0.1:8123  Asaan        (live)
+├── karm.asaan.in     -> 127.0.0.1:8124  Karmos       (live)
+├── probook.asaan.in  -> 127.0.0.1:8130  ProBooks     (live)
+└── orders.rologe.com -> 127.0.0.1:3100  prorder-admin (this migration)
+PostgreSQL 16 on loopback (asaan, karmos, probooks databases)
 ```
 
-Everything that runs as a bare process today becomes a **systemd unit** — that alone
-fixes the biggest fragility on the old box (xltron currently runs from a `/tmp` build
-that disappears on reboot).
+`qr` and `dashboard` keep their nginx + certbot setup on Lightsail, untouched.
 
-## Migration order
+## Migrating prorder-admin
 
-1. **Asaan first** — fresh deploy, proves the box, the proxy and TLS before touching
-   anything that is already serving customers.
-2. **qr.rologe.com** — simplest: static root plus one Node process.
-3. **orders.rologe.com** — Docker image + SQLite volume + backup cron.
-4. **dashboard.rologe.com** — three upstreams; do it last and with a maintenance note.
+1. **Freeze writes**: tell users, then stop the container on Lightsail
+   (`sudo docker stop prorder-admin`) so the SQLite file is stable.
+2. **Copy the data**: `/var/lib/prorder/prorder.db` (and anything else in that
+   directory) plus `/home/ubuntu/backup-db.sh` and the nightly cron entry.
+3. **Copy the image** so the running code is preserved exactly:
+   `sudo docker save prorder-admin:latest | gzip | ssh ovh 'gunzip | sudo docker load'`
+   (the source directory `/var/www/prorder-admin` holds only its `.env`; the code
+   lives inside the image).
+4. **Run it on OVH** with the same volume layout — `/var/lib/prorder/prorder.db` on
+   the host, published on `127.0.0.1:3100` only. Wrap it in a systemd unit so it
+   starts on boot (`docker run --restart` is enough if Docker is enabled).
+5. **Caddy block** for `orders.rologe.com` → `reverse_proxy 127.0.0.1:3100`
+   (copy the shape of the ProBooks block: log, encode, HSTS, reverse_proxy).
+6. **Verify with a hosts-file override** before touching DNS: point
+   `orders.rologe.com` at the OVH IP locally and exercise the app.
+7. **Cut over**: lower the TTL at GoDaddy first, then change the A record to
+   `51.79.144.234`. Rollback is flipping it back.
+8. **Keep Lightsail running** for a week or two; only then decommission.
 
-## Per-service procedure (repeat for each)
-
-1. **Freeze**: tell users (or accept a quiet window), stop writes.
-2. **Copy code**: `rsync -az` the app directory (excluding `node_modules`) to
-   `/opt/rologe/<app>` on the new box; clone from GitHub where a repo exists
-   (`terminal-ator/xltron`, `terminal-ator/exart`).
-3. **Copy data**: SQLite files, uploads, and — for Postgres — `pg_dump -Fc` then
-   `pg_restore` into the new PG 16 instance, followed by row-count comparison.
-4. **Start under systemd** on an internal port; verify with
-   `curl -H "Host: <domain>" http://127.0.0.1:<port>/`.
-5. **Add the nginx vhost** on the new box and verify end to end with a hosts-file
-   override on your laptop before touching DNS.
-6. **Cut over DNS** in the GoDaddy panel: one A record at a time, with TTL lowered
-   in advance. Verify, then move to the next app.
-7. **Keep the old service running** for a week; rollback is flipping the A record back.
-
-## Questions to resolve before starting
-
-- [ ] Does anything **outside** the Lightsail box connect to Postgres, or can it stay
-      loopback-only? (Determines the 5432 fix.)
-- [ ] Which app uses which database? (`postgres`/accounting looks like xltron or
-      exart; `crash_course`, `wholeshop`, `new_log` belong to something else — the
-      running processes' environments will tell us.)
-- [ ] Are `/home/ubuntu/documents/probooks/{rserver,xltron,exart}` older copies or
-      newer than `/home/ubuntu/probooks/...`?
-- [ ] Is **keymint** still needed? (749 MB, not running, not served.)
-- [ ] Keep `dashboard.rologe.com/dash`? Its upstream (5005) is already dead.
-
-## Verification checklist after each cutover
+## Verification checklist
 
 - [ ] Page loads over HTTPS with a valid certificate on the new box.
-- [ ] The app's own functions work (login, main screens, a write).
-- [ ] `journalctl -u <unit>` shows no errors.
-- [ ] Row counts / SQLite file sizes match the old box.
-- [ ] Backup cron runs on the new box.
+- [ ] Sign in, raise a test order/bill, check a report.
+- [ ] `journalctl -u docker` / container logs clean.
+- [ ] `prorder.db` size and row counts match the old copy.
+- [ ] Nightly backup cron runs on the new box.
+- [ ] Old site still answers until DNS moves, then returns 404 or stays idle.
+
+## Open questions
+
+- [ ] Does prorder-admin have any other files next to `prorder.db` in `/var/lib/prorder`
+      that matter (uploads, exports)?
+- [ ] Keep the Docker-based deploy, or unpack the image into a normal app directory
+      with a systemd unit while we are here?
+- [ ] `orders.rologe.com` keeps its name (recommended) or moves to an `asaan.in` name?
