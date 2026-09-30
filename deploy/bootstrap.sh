@@ -206,38 +206,45 @@ if [ "$PROXY" = "caddy" ]; then
   # Caddy separates site addresses with ", " and nginx with spaces.
   CADDY_HOSTS="$(printf '%s' "$ALL_HOSTS" | sed 's/,/, /g')"
   SITE_PATTERN="$(printf '%s' "$SITE_HOST" | sed 's/\./\\./g')"
-  sed -e "s/asaan\.in/$SITE_HOST/g" \
-      -e "s/^$SITE_PATTERN {/$CADDY_HOSTS {/" \
-      -e "s|/opt/asaan|$APP_DIR|g" \
-      -e "s|/var/lib/asaan|$DATA_DIR|g" \
-      "$APP_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
-  if [ -n "$EMAIL" ]; then
-    printf '{\n\temail %s\n}\n\n' "$EMAIL" > /etc/caddy/Caddyfile.tmp
-    cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.tmp
-    mv /etc/caddy/Caddyfile.tmp /etc/caddy/Caddyfile
-  fi
-  # Typing the server's bare IP should land somewhere useful. Send it to a
-  # hostname that has a certificate; a sslip.io alias wins because it works
-  # even before the real DNS record exists.
-  public_ip="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
-  if [ -n "$public_ip" ]; then
-    redir_host="$SITE_HOST"
-    case ",$EXTRA_HOSTS," in
-      *".sslip.io,"*)
-        for host in $(printf '%s' "$EXTRA_HOSTS" | tr ',' ' '); do
-          case "$host" in *.sslip.io) redir_host="$host"; break ;; esac
-        done
-        ;;
-    esac
-    cat >> /etc/caddy/Caddyfile <<EOF
+  BLOCK_FILE="$(mktemp)"
+  {
+    printf '# >>> asaan (managed by deploy/bootstrap.sh, do not edit by hand)\n'
+    sed -e "s/asaan\.in/$SITE_HOST/g" \
+        -e "s/^$SITE_PATTERN {/$CADDY_HOSTS {/" \
+        -e "s|/opt/asaan|$APP_DIR|g" \
+        -e "s|/var/lib/asaan|$DATA_DIR|g" \
+        "$APP_DIR/deploy/Caddyfile"
+    # Typing the server's bare IP should land on the real hostname.
+    public_ip="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
+    if [ -n "$public_ip" ]; then
+      printf '\n# Requests to the bare IP land on the real hostname.\nhttp://%s {\n\tredir https://%s{uri} permanent\n}\n' \
+        "$public_ip" "$SITE_HOST"
+    fi
+    printf '# <<< asaan\n'
+  } > "$BLOCK_FILE"
 
-# Requests to the bare IP land on the real hostname.
-http://$public_ip {
-	redir https://$redir_host{uri} permanent
-}
-EOF
+  if [ ! -f /etc/caddy/Caddyfile ]; then
+    printf '{\n\temail %s\n}\n\n' "${EMAIL:-admin@$SITE_HOST}" > /etc/caddy/Caddyfile
+    cat "$BLOCK_FILE" >> /etc/caddy/Caddyfile
+  else
+    # Replace only our own marked block: other apps on the box keep theirs.
+    cp -a /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak-$(date +%Y%m%d%H%M%S)"
+    sed -i '/# >>> asaan/,/# <<< asaan/d' /etc/caddy/Caddyfile
+    cat "$BLOCK_FILE" >> /etc/caddy/Caddyfile
+    if [ -n "$EMAIL" ] && ! head -n 1 /etc/caddy/Caddyfile | grep -q '^{'; then
+      printf '{\n\temail %s\n}\n\n' "$EMAIL" > /etc/caddy/Caddyfile.new
+      cat /etc/caddy/Caddyfile >> /etc/caddy/Caddyfile.new
+      mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+    fi
   fi
-  caddy validate --config /etc/caddy/Caddyfile
+  rm -f "$BLOCK_FILE"
+
+  if ! caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    latest_backup="$(ls -t /etc/caddy/Caddyfile.bak-* 2>/dev/null | head -1 || true)"
+    if [ -n "$latest_backup" ]; then cp -a "$latest_backup" /etc/caddy/Caddyfile; fi
+    die "caddy config did not validate; the previous Caddyfile was restored"
+  fi
+  echo "  caddy site updated; other sites on the box were left untouched"
 else
   say "nginx site"
   NGINX_HOSTS="$(printf '%s' "$ALL_HOSTS" | tr ',' ' ')"
