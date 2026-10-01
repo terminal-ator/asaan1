@@ -70,6 +70,7 @@ Order updates: shops tap **Get order updates** on the Orders screen to allow not
   `python manage.py send_order_day_reminders` at 08:30 pushes “Today is your order day” to the shops scheduled for today.
 - **Daily deals** — Console → **Deals** assigns one product and an extra trade scheme % to each weekday. The app shows a *Today's deal* card, a deal chip on the product, and a “Deals this week” shelf; `python manage.py send_daily_deal` at 09:00 pushes the day's deal to every subscribed device.
 - Both commands are safe to run by hand, and the console dashboard has **Order-day reminders** and **Today's deal** buttons that fire them immediately.
+- On the server, `/etc/cron.d/asaan-notifications` runs them at 08:30 and 09:00 and appends to `/var/lib/asaan/notifications.log`.
 
 Prices are integer paise everywhere. `POST /api/orders` body:
 
