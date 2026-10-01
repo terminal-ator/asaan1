@@ -114,10 +114,14 @@ function App() {
   }
 
   async function toggleLike(productId: string) {
-    const liked = likes.includes(productId)
-    setLikes(liked ? likes.filter(id => id !== productId) : [...likes, productId])
-    if (liked) await db.likes.delete(productId)
-    else await db.likes.put({ id: productId })
+    // The database is the source of truth so two quick taps cannot race.
+    if (await db.likes.get(productId)) {
+      await db.likes.delete(productId)
+      setLikes(list => list.filter(id => id !== productId))
+    } else {
+      await db.likes.put({ id: productId })
+      setLikes(list => list.includes(productId) ? list : [...list, productId])
+    }
   }
 
   async function saveCart(next: CartItem[]) {
