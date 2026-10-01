@@ -26,9 +26,12 @@ class AsaanDB extends Dexie {
   products!: EntityTable<Product, 'id'>
   cart!: EntityTable<{ id: 'current'; items: CartItem[] }, 'id'>
   orders!: EntityTable<LocalOrder, 'clientOrderId'>
+  likes!: EntityTable<{ id: string }, 'id'>
   constructor() {
     super('asaan')
     this.version(1).stores({ products: 'id, sku, name, company, brand, category', cart: 'id', orders: 'clientOrderId, status, createdAt' })
+    // Liked products live on the device: every shop keeps its own shortlist.
+    this.version(2).stores({ products: 'id, sku, name, company, brand, category', cart: 'id', orders: 'clientOrderId, status, createdAt', likes: 'id' })
   }
 }
 const db = new AsaanDB()
@@ -58,10 +61,15 @@ function App() {
   const [brand, setBrand] = useState('')
   const [screen, setScreen] = useState<'catalogue' | 'cart' | 'orders'>('catalogue')
   const [message, setMessage] = useState('')
+  const [likes, setLikes] = useState<string[]>([])
+  const [likedOnly, setLikedOnly] = useState(false)
+  const [showDiscover, setShowDiscover] = useState(false)
+  const [discoverSeed, setDiscoverSeed] = useState(0)
 
   useEffect(() => {
     void (async () => {
       setProducts(await db.products.toArray())
+      setLikes((await db.likes.toArray()).map(like => like.id))
       setCart((await db.cart.get('current'))?.items ?? [])
       await refreshCatalogue()
       await retryPendingOrders()
@@ -91,14 +99,25 @@ function App() {
       // Replace the offline copy in full: a product removed or deactivated in
       // the console must not reappear the next time the app starts offline.
       const current = new Set(payload.products.map(product => product.id))
-      await db.transaction('rw', db.products, async () => {
+      await db.transaction('rw', db.products, db.likes, async () => {
         await db.products.bulkPut(payload.products)
         const stale = await db.products.filter(product => !current.has(product.id)).primaryKeys()
         await db.products.bulkDelete(stale)
+        // A liked product that left the catalogue should not linger in the shortlist.
+        const staleLikes = await db.likes.filter(like => !current.has(like.id)).primaryKeys()
+        await db.likes.bulkDelete(staleLikes)
       })
       setProducts(payload.products)
+      setLikes(likes => likes.filter(id => current.has(id)))
       setMessage(message => message.startsWith('Showing saved catalogue') ? '' : message)
     } catch { setMessage('Showing saved catalogue. Updates will sync when you are online.') }
+  }
+
+  async function toggleLike(productId: string) {
+    const liked = likes.includes(productId)
+    setLikes(liked ? likes.filter(id => id !== productId) : [...likes, productId])
+    if (liked) await db.likes.delete(productId)
+    else await db.likes.put({ id: productId })
   }
 
   async function saveCart(next: CartItem[]) {
@@ -194,7 +213,7 @@ function App() {
     index.addAll(products)
     return index
   }, [products])
-  const filtered = useMemo(() => {
+  const browse = useMemo(() => {
     const productByID = new Map(products.map(product => [product.id, product]))
     const matches = query.trim() ? search.search(query, { prefix: true, fuzzy: 0.2, combineWith: 'AND' }).flatMap(result => {
       const product = productByID.get(String(result.id))
@@ -202,6 +221,20 @@ function App() {
     }) : products
     return matches.filter(product => (!company || product.company === company) && (!brand || product.brand === brand))
   }, [products, query, company, brand, search])
+  const likedSet = useMemo(() => new Set(likes), [likes])
+  const filtered = useMemo(() => likedOnly ? browse.filter(product => likedSet.has(product.id)) : browse, [browse, likedOnly, likedSet])
+  // A random shelf for discovery. The seed only exists to re-run this memo.
+  const discover = useMemo(() => {
+    if (!showDiscover || browse.length === 0) return []
+    const pool = [...browse]
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const swap = pool[i]
+      pool[i] = pool[j]
+      pool[j] = swap
+    }
+    return pool.slice(0, 10)
+  }, [browse, showDiscover, discoverSeed])
   const total = cart.reduce((sum, item) => sum + item.quantity * item.rate, 0)
   const marginTotal = useMemo(() => {
     const byId = new Map(products.map(product => [product.id, product]))
@@ -216,7 +249,7 @@ function App() {
   return <main className={screen === 'catalogue' ? 'catalogue' : undefined}>
     <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
-    {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} cart={cart} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
+    {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} discover={discover} cart={cart} likes={likes} likedOnly={likedOnly} setLikedOnly={setLikedOnly} showDiscover={showDiscover} setShowDiscover={setShowDiscover} shuffleDiscover={() => setDiscoverSeed(seed => seed + 1)} toggleLike={id => void toggleLike(id)} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'cart' && <Cart cart={cart} total={total} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'orders' && <Orders onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
@@ -276,7 +309,7 @@ function Menu({ onLogout }: { onLogout: () => void }) {
   </div>
 }
 
-function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: CartItem[]; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
+function Catalogue(props: { products: Product[]; newProducts: Product[]; discover: Product[]; cart: CartItem[]; likes: string[]; likedOnly: boolean; setLikedOnly: (v: boolean) => void; showDiscover: boolean; setShowDiscover: (v: boolean) => void; shuffleDiscover: () => void; toggleLike: (id: string) => void; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [keypadProduct, setKeypadProduct] = useState<Product | null>(null)
   const [keypadValue, setKeypadValue] = useState('')
@@ -293,10 +326,11 @@ function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: C
   })
   const showNewProducts = !props.query && !props.company && !props.brand
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const likedSet = new Set(props.likes)
   const filterCount = (props.company ? 1 : 0) + (props.brand ? 1 : 0)
   // Open the panel whenever a filter is applied so the choice stays visible.
   useEffect(() => { if (props.company || props.brand) setFiltersOpen(true) }, [props.company, props.brand])
-  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showNewProducts && <section className="new-products"><div><b>New products</b><small>Recently added · rates include GST</small></div><div className="new-product-row">{props.newProducts.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(inclusiveRate(product))}</small></button>)}</div></section>}<div className="count">{props.products.length} products · Rates include GST</div><div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}><div className="product-main">{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<div className="product-info"><b>{product.simpleName || product.name}</b><small>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}{product.packing} · {product.company}</small><strong><span className="rate"><span className="amount">{money(inclusiveRate(product))}</span> <em className="unit">/{product.unit}</em></span><span className="mrp">MRP {money(product.mrp)}</span></strong></div></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
+  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div><div className="quick-row"><button type="button" className={`quick-toggle ${props.likedOnly ? 'active' : ''}`} aria-pressed={props.likedOnly} onClick={() => props.setLikedOnly(!props.likedOnly)}><svg viewBox="0 0 24 24" fill={props.likedOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg><span>Liked</span>{props.likes.length > 0 && <span className="quick-count">{props.likes.length}</span>}</button><button type="button" className={`quick-toggle ${props.showDiscover ? 'active' : ''}`} aria-pressed={props.showDiscover} onClick={() => props.setShowDiscover(!props.showDiscover)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="m4 4 5 5" /></svg><span>Discover</span></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showNewProducts && <section className="new-products"><div><b>New products</b><small>Recently added · rates include GST</small></div><div className="new-product-row">{props.newProducts.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(inclusiveRate(product))}</small></button>)}</div></section>}{props.showDiscover && <section className="new-products discover"><div><b>Discover</b><small>Random picks · rates include GST</small><button type="button" className="shuffle-button" onClick={props.shuffleDiscover}>Shuffle</button></div><div className="new-product-row">{props.discover.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(inclusiveRate(product))}</small></button>)}</div></section>}<div className="count">{props.likedOnly ? `${props.products.length} liked item${props.products.length === 1 ? '' : 's'}` : `${props.products.length} products`} · Rates include GST</div>{props.products.length === 0 && <p className="empty">{props.likedOnly ? 'No liked items yet. Tap the heart on a product to save it here.' : 'No products match your search.'}</p>}<div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}><div className="product-main"><span className="product-photo">{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<button type="button" className={`like-button ${likedSet.has(product.id) ? 'on' : ''}`} aria-label={likedSet.has(product.id) ? 'Remove from liked' : 'Add to liked'} aria-pressed={likedSet.has(product.id)} onClick={event => { event.stopPropagation(); props.toggleLike(product.id) }}><svg viewBox="0 0 24 24" fill={likedSet.has(product.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg></button></span><div className="product-info"><b>{product.simpleName || product.name}</b><small>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}{product.packing} · {product.company}</small><strong><span className="rate"><span className="amount">{money(inclusiveRate(product))}</span> <em className="unit">/{product.unit}</em></span><span className="mrp">MRP {money(product.mrp)}</span></strong></div></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} liked={likedSet.has(keypadProduct.id)} onToggleLike={() => props.toggleLike(keypadProduct.id)} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
 }
 
 function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { value: number; decrement: () => void; increment: () => void; onInput: (value: number) => void; onOpenKeypad?: () => void }) {
@@ -340,7 +374,7 @@ function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { valu
   </div>
 }
 
-function Keypad({ product, value, pressKey, onClose, onSave }: { product: Product; value: string; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
+function Keypad({ product, value, liked, onToggleLike, pressKey, onClose, onSave }: { product: Product; value: string; liked: boolean; onToggleLike: () => void; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
   const scheme = Number(product.schemePercent) || 0
   const gst = Number(product.gstRate) || 0
   const image = imageSource(product)
@@ -371,7 +405,7 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
             <small>{product.packing} · {product.company}</small>
           </div>
         </div>
-        <button onClick={onClose} aria-label="Close keypad">×</button>
+        <div className="keypad-title-actions"><button type="button" className={`like-button ${liked ? 'on' : ''}`} aria-label={liked ? 'Remove from liked' : 'Add to liked'} aria-pressed={liked} onClick={onToggleLike}><svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg></button><button className="keypad-close" onClick={onClose} aria-label="Close keypad">×</button></div>
       </div>
 
       <div className="keypad-price">

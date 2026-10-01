@@ -212,6 +212,25 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 }
 .count { padding: 8px 16px 6px; font-size: 11.5px; color: var(--muted); }
 
+/* Liked + discover toggles */
+.quick-row { display: flex; gap: 8px; padding: 0 16px 10px; }
+.quick-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.quick-toggle svg { width: 15px; height: 15px; }
+.quick-toggle.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-dark); }
+.quick-count { border-radius: 999px; background: var(--brand); color: #fff; padding: 1px 6px; font-size: 10.5px; font-weight: 700; }
+.quick-toggle.active .quick-count { background: var(--brand-dark); }
+
 /* Product list */
 .product-list { overflow: auto; }
 .product {
@@ -245,6 +264,25 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .product strong .amount { flex: 0 0 auto; white-space: nowrap; }
 .product strong .unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .product strong .mrp { flex: 0 0 auto; font-size: 11px; font-weight: 500; color: var(--faint); white-space: nowrap; }
+/* Photo wrapper keeps the heart on the corner without shifting the row. */
+.product-photo { position: relative; flex: 0 0 56px; }
+.product-photo .product-image { display: block; }
+.like-button {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--faint);
+  box-shadow: var(--shadow-soft);
+}
+.like-button svg { width: 14px; height: 14px; }
+.like-button.on { border-color: #fecdd3; background: #fff1f2; color: #e11d48; }
 .product em { font-size: 11px; font-style: normal; font-weight: 500; color: var(--faint); }
 /* On the narrowest phones the unit is the first thing to go, so the rate and
    MRP stay readable instead of a lone slash. */
@@ -441,7 +479,10 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 .keypad-heading { min-width: 0; padding-top: 4px; }
 .keypad-heading b { display: block; font-size: 17px; font-weight: 750; line-height: 1.3; }
 .keypad-heading small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
-.keypad-title > button { background: none; border: 0; color: var(--muted); font-size: 26px; line-height: 20px; padding: 0 6px; }
+.keypad-title-actions { display: flex; align-items: center; gap: 10px; }
+.keypad-title-actions .like-button { position: static; width: 34px; height: 34px; }
+.keypad-title-actions .like-button svg { width: 16px; height: 16px; }
+.keypad-close { background: none; border: 0; color: var(--muted); font-size: 26px; line-height: 20px; padding: 0 6px; }
 .keypad-price {
   display: flex;
   align-items: baseline;

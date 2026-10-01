@@ -2,7 +2,7 @@
 
 Retailer ordering PWA plus a distributor console.
 
-- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue, and submit orders that queue locally until the API is reachable.
+- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue, like products for a personal shortlist (the **Liked** filter), shuffle a random **Discover** shelf for new items, and submit orders that queue locally until the API is reachable.
 - **API and console (`django_api/`)** — Django serves the catalogue and receives orders, and provides the staff console for reviewing orders, printing slips, grouping dispatch loadings, managing products and shops, purchases, returns, inventory, and GST reports.
 
 ## Current billing workflow
