@@ -4,7 +4,7 @@
   flex: 0 0 56px;
   border-radius: 14px;
   object-fit: cover;
-  background: #f1f5f9;
+  background: #efede7;
   border: 1px solid var(--line);
 }
 .product-image.placeholder { display: grid; place-items: center; color: var(--faint); font-size: 21px; border-style: dashed; }

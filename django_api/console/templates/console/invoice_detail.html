@@ -2,7 +2,7 @@
 {% load console_tags %}
 
 {% block content %}
-<style>@media print { nav, .no-print { display: none !important; } body { background: white !important; } main { max-width: none !important; padding: 0 !important; } section { box-shadow: none !important; border: 1px solid #cbd5e1; } }</style>
+<style>@media print { nav, .no-print { display: none !important; } body { background: white !important; } main { max-width: none !important; padding: 0 !important; } section { box-shadow: none !important; border: 1px solid #d3cfc6; } }</style>
 <main class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:py-8">
   <div class="no-print mb-5 flex flex-wrap items-center justify-between gap-2"><a class="text-sm font-semibold text-brand-600" href="{% url 'console-order-detail' order.id %}">← Back to order</a><div class="flex gap-2"><a class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" href="{% url 'console-invoice-excel' order.id %}">Export Excel data</a><button class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white" onclick="window.print()">Print invoice</button></div></div>
   <section class="rounded-2xl bg-white p-6 shadow-card ring-1 ring-slate-200/80 sm:p-10">

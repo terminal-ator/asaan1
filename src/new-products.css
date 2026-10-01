@@ -29,7 +29,7 @@
   box-shadow: var(--shadow-soft);
   transition: transform .12s, border-color .12s;
 }
-.new-product-row button:hover { border-color: #c7d2fe; transform: translateY(-1px); }
+.new-product-row button:hover { border-color: #cbd2ea; transform: translateY(-1px); }
 .shelf-photo {
   flex: 0 0 40px;
   width: 40px;
@@ -39,7 +39,7 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: #f1f5f9;
+  background: #efede7;
   color: var(--faint);
   font-size: 16px;
 }

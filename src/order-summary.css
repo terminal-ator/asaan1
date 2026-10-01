@@ -1,5 +1,5 @@
 .history.clickable { cursor: pointer; }
-.history.clickable:hover { border-color: #c7d2fe; }
+.history.clickable:hover { border-color: #cbd2ea; }
 .history.clickable:active { background: var(--canvas); }
 .chevron { color: var(--faint); font-size: 22px; line-height: 16px; }
 

@@ -33,7 +33,7 @@
   transition: border-color .12s, background .12s, color .12s, box-shadow .12s;
 }
 
-.filter-pill:hover { border-color: #c7d2fe; }
+.filter-pill:hover { border-color: #cbd2ea; }
 
 .filter-pill.selected {
   border-color: var(--brand);

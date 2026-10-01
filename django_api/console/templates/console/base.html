@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#33459e">
 <title>Asaan Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,7 +14,13 @@
     theme: {
       extend: {
         colors: {
-          brand: {50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81'},
+          // Palette borrowed from Karmos/Totals: warm paper neutrals, indigo
+          // accent, and warm semantic tones.
+          brand: {50:'#eef0f9',100:'#e6e9f6',200:'#c7cee9',300:'#a3aedc',400:'#7a89ca',500:'#5465b5',600:'#33459e',700:'#2a3a86',800:'#232f6b',900:'#1e2957'},
+          slate: {50:'#f6f5f1',100:'#efede7',200:'#e4e1d9',300:'#d3cfc6',400:'#a9a59b',500:'#8a867d',600:'#66635c',700:'#4b4943',800:'#33322e',900:'#1c1b19'},
+          emerald: {50:'#e3f1e8',100:'#d2e8db',200:'#b5dac5',300:'#8fc6a9',400:'#63ac88',500:'#3f9268',600:'#2e7a4e',700:'#266441',800:'#1f5236',900:'#1a432d'},
+          amber: {50:'#fff1d6',100:'#ffe7ba',200:'#f7d493',300:'#ebbf6c',400:'#d9a343',500:'#b7831f',600:'#8a5a00',700:'#6e4800',800:'#553800',900:'#3e2900'},
+          rose: {50:'#fbe9e7',100:'#f7d6d3',200:'#f0bdb8',300:'#e59b94',400:'#d4716a',500:'#c2463e',600:'#b3261e',700:'#93201a',800:'#741a15',900:'#57130f'},
         },
         fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
         boxShadow: { card: '0 1px 2px rgba(15,23,42,.05), 0 10px 30px -18px rgba(15,23,42,.25)' },
@@ -27,7 +33,7 @@
   [x-cloak]{display:none!important}
   html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   table{font-variant-numeric:tabular-nums}
-  @media print{nav,.no-print{display:none!important}body{background:#fff!important}.slip-page{break-after:page;box-shadow:none!important;border:1px solid #cbd5e1!important}}
+  @media print{nav,.no-print{display:none!important}body{background:#fff!important}.slip-page{break-after:page;box-shadow:none!important;border:1px solid #d3cfc6!important}}
   @page{margin:12mm}
 </style>
 </head>
