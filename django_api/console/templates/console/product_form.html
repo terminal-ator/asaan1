@@ -109,10 +109,16 @@
           </div>
         </div>
         {% include 'console/_field.html' with field=form.image_url %}
-        <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
-          {{ form.active }}
-          <span>Visible in catalogue</span>
-        </label>
+        <div class="grid gap-3 sm:grid-cols-2 lg:col-span-2">
+          <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
+            {{ form.active }}
+            <span>Visible in catalogue</span>
+          </label>
+          <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
+            {{ form.regular }}
+            <span>Regular (best seller)</span>
+          </label>
+        </div>
       </section>
     </div>
 

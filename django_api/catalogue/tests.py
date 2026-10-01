@@ -98,6 +98,12 @@ class OrderApiTests(TestCase):
         self.assertEqual(product["rate"], 10000)
         self.assertEqual(product["rateInclusive"], 11800)
 
+    def test_catalogue_includes_the_regular_flag(self):
+        self.product.regular = True
+        self.product.save(update_fields=["regular"])
+        response = self.client.get("/api/catalogue")
+        self.assertTrue(response.json()["products"][0]["regular"])
+
     def test_order_snapshots_the_scheme(self):
         self.product.scheme_percent = "7.50"
         self.product.save(update_fields=["scheme_percent"])
@@ -157,6 +163,38 @@ class AdminProductImportTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Product.objects.filter(sku="ADM-2").exists())
+
+    def test_import_reads_the_regular_flag(self):
+        response = self.import_csv(
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,regular\n"
+            "ADM-3,Best seller,Co,Brand,Cat,Box,box,10.00,12.00,yes\n"
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Product.objects.get(sku="ADM-3").regular)
+
+    def test_reimport_without_the_regular_column_keeps_the_flag(self):
+        company = Company.objects.create(name="Keep Co")
+        brand = Brand.objects.create(name="Keep Brand")
+        category = Category.objects.create(name="Keep Cat")
+        product = Product.objects.create(
+            sku="ADM-4",
+            name="Kept item",
+            company=company,
+            brand=brand,
+            category=category,
+            packing="Box",
+            unit="box",
+            rate=1000,
+            mrp=1200,
+            regular=True,
+        )
+        response = self.import_csv(
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp\n"
+            "ADM-4,Kept item,Keep Co,Keep Brand,Keep Cat,Box,box,10.00,12.00\n"
+        )
+        self.assertEqual(response.status_code, 302)
+        product.refresh_from_db()
+        self.assertTrue(product.regular)
 
 
 class ProductMarginTests(TestCase):

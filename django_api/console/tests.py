@@ -102,6 +102,7 @@ class ConsoleOrderFlowTests(TestCase):
                 "form-0-gst_rate": "12.00",
                 "form-0-scheme_percent": "7.50",
                 "form-0-active": "on",
+                "form-0-regular": "on",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -110,6 +111,7 @@ class ConsoleOrderFlowTests(TestCase):
         self.assertEqual(self.product.mrp, 15000)
         self.assertEqual(str(self.product.gst_rate), "12.00")
         self.assertEqual(str(self.product.scheme_percent), "7.50")
+        self.assertTrue(self.product.regular)
 
     def test_product_import_reads_the_scheme_column(self):
         self.client.force_login(self.user)
@@ -123,6 +125,24 @@ class ConsoleOrderFlowTests(TestCase):
         imported = Product.objects.get(sku="SKU-9")
         self.assertEqual(imported.rate, 5000)
         self.assertEqual(imported.scheme_percent, Decimal("7.5"))
+
+    def test_product_import_reads_the_regular_column(self):
+        self.client.force_login(self.user)
+        body = (
+            "sku,name,company,brand,category,packing,unit,sale_rate,mrp,regular\n"
+            "SKU-10,Best seller,Imp Co,Imp Brand,Snacks,Box of 12,box,50.00,60.00,yes\n"
+        )
+        upload = SimpleUploadedFile("items.csv", body.encode(), content_type="text/csv")
+        response = self.client.post(reverse("console-product-import"), {"file": upload})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Product.objects.get(sku="SKU-10").regular)
+
+    def test_products_list_marks_regular_items(self):
+        self.product.regular = True
+        self.product.save(update_fields=["regular"])
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("console-products"))
+        self.assertContains(response, ">Regular</span>")
 
     def test_product_import_rejects_a_scheme_above_100(self):
         self.client.force_login(self.user)

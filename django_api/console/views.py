@@ -1223,6 +1223,7 @@ def product_import_template(request):
             "gst_rate",
             "scheme_percent",
             "image_url",
+            "regular",
             "active",
         ]
     )
@@ -1308,32 +1309,40 @@ def product_import(request):
                         f"Row {row_number}: scheme_percent must be between 0 and 100."
                     )
 
-                Product.objects.update_or_create(
-                    sku=row["sku"],
-                    defaults={
-                        "name": row["name"],
-                        "simple_name": row.get("simple_name", ""),
-                        "company": Company.objects.get_or_create(
-                            name=row["company"]
-                        )[0],
-                        "brand": Brand.objects.get_or_create(
-                            name=row["brand"]
-                        )[0],
-                        "category": Category.objects.get_or_create(
-                            name=row["category"]
-                        )[0],
-                        "hsn_code": row.get("hsn_code", ""),
-                        "packing": row["packing"],
-                        "unit": row["unit"] or "case",
-                        "rate": sale_rate,
-                        "mrp": mrp,
-                        "gst_rate": gst_rate,
-                        "scheme_percent": scheme_percent,
-                        "image_url": row.get("image_url", ""),
-                        "active": row.get("active", "true").lower()
-                        not in {"false", "0", "no"},
-                    },
-                )
+                defaults = {
+                    "name": row["name"],
+                    "simple_name": row.get("simple_name", ""),
+                    "company": Company.objects.get_or_create(
+                        name=row["company"]
+                    )[0],
+                    "brand": Brand.objects.get_or_create(
+                        name=row["brand"]
+                    )[0],
+                    "category": Category.objects.get_or_create(
+                        name=row["category"]
+                    )[0],
+                    "hsn_code": row.get("hsn_code", ""),
+                    "packing": row["packing"],
+                    "unit": row["unit"] or "case",
+                    "rate": sale_rate,
+                    "mrp": mrp,
+                    "gst_rate": gst_rate,
+                    "scheme_percent": scheme_percent,
+                    "image_url": row.get("image_url", ""),
+                    "active": row.get("active", "true").lower()
+                    not in {"false", "0", "no"},
+                }
+                # Only touch the best-seller flag when the column is present, so
+                # re-importing a CSV without it cannot silently clear it.
+                if "regular" in headers:
+                    defaults["regular"] = row.get("regular", "").lower() in {
+                        "true",
+                        "1",
+                        "yes",
+                        "y",
+                        "on",
+                    }
+                Product.objects.update_or_create(sku=row["sku"], defaults=defaults)
                 imported += 1
 
         messages.success(request, f"{imported} products imported or updated.")

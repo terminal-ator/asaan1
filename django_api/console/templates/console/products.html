@@ -101,7 +101,10 @@
           {% endif %}
         </span>
         <div class="min-w-0 flex-1">
-          <p class="truncate font-semibold">{{ product }}</p>
+          <div class="flex items-center gap-2">
+            <p class="truncate font-semibold">{{ product }}</p>
+            {% if product.regular %}<span class="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">Regular</span>{% endif %}
+          </div>
           <p class="mt-0.5 truncate text-xs text-slate-500">{{ product.packing }} · {{ product.company }} / {{ product.brand }}</p>
           <p class="mt-0.5 truncate text-xs text-slate-400">SKU {{ product.sku }}</p>
         </div>
@@ -166,7 +169,10 @@
                   {% endif %}
                 </span>
                 <span class="min-w-0 max-w-[240px] xl:max-w-none">
-                  <p class="truncate font-semibold">{{ product }}</p>
+                  <div class="flex items-center gap-2">
+                    <p class="truncate font-semibold">{{ product }}</p>
+                    {% if product.regular %}<span class="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">Regular</span>{% endif %}
+                  </div>
                   <p class="mt-1 truncate text-xs text-slate-500">ERP: {{ product.name }}</p>
                 </span>
               </div>

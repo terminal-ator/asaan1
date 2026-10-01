@@ -91,6 +91,7 @@ def catalogue(request):
                     "mrp": product.mrp,
                     "gstRate": str(product.gst_rate),
                     "schemePercent": str(product.scheme_percent),
+                    "regular": product.regular,
                     "imageUrl": product.image.url if product.image else product.image_url,
                     "updatedAt": product.updated_at.isoformat(),
                     "createdAt": product.created_at.isoformat(),

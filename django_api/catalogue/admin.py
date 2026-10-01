@@ -67,25 +67,29 @@ class ProductAdmin(admin.ModelAdmin):
                             raise ValueError(f'Row {sku}: prices must be positive and GST must be between 0 and 100.')
                         if scheme_percent < 0 or scheme_percent > 100:
                             raise ValueError(f'Row {sku}: scheme_percent must be between 0 and 100.')
-                        Product.objects.update_or_create(
-                            sku=sku,
-                            defaults={
-                                'name': row['name'].strip(),
-                                'simple_name': (row.get('simple_name') or '').strip(),
-                                'company': Company.objects.get_or_create(name=row['company'].strip())[0],
-                                'brand': Brand.objects.get_or_create(name=row['brand'].strip())[0],
-                                'category': Category.objects.get_or_create(name=row['category'].strip())[0],
-                                'packing': row['packing'].strip(),
-                                'unit': row['unit'].strip(),
-                                'rate': round(rate),
-                                'mrp': round(mrp),
-                                'gst_rate': gst_rate,
-                                'scheme_percent': scheme_percent,
-                                'hsn_code': (row.get('hsn_code') or '').strip(),
-                                'image_url': (row.get('image_url') or '').strip(),
-                                'active': (row.get('active') or 'true').lower() != 'false',
-                            },
-                        )
+                        defaults = {
+                            'name': row['name'].strip(),
+                            'simple_name': (row.get('simple_name') or '').strip(),
+                            'company': Company.objects.get_or_create(name=row['company'].strip())[0],
+                            'brand': Brand.objects.get_or_create(name=row['brand'].strip())[0],
+                            'category': Category.objects.get_or_create(name=row['category'].strip())[0],
+                            'packing': row['packing'].strip(),
+                            'unit': row['unit'].strip(),
+                            'rate': round(rate),
+                            'mrp': round(mrp),
+                            'gst_rate': gst_rate,
+                            'scheme_percent': scheme_percent,
+                            'hsn_code': (row.get('hsn_code') or '').strip(),
+                            'image_url': (row.get('image_url') or '').strip(),
+                            'active': (row.get('active') or 'true').lower() != 'false',
+                        }
+                        # Only touch the best-seller flag when the column is
+                        # present, so a re-import cannot silently clear it.
+                        if 'regular' in (rows.fieldnames or []):
+                            defaults['regular'] = (row.get('regular') or '').strip().lower() in {
+                                'true', '1', 'yes', 'y', 'on',
+                            }
+                        Product.objects.update_or_create(sku=sku, defaults=defaults)
                         count += 1
                 messages.success(request, f'{count} products imported or updated.')
             except Exception as exc:

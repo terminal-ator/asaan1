@@ -83,6 +83,7 @@ class ProductForm(forms.ModelForm):
             "image",
             "image_url",
             "active",
+            "regular",
         ]
         widgets = {
             "rate": forms.NumberInput(
@@ -111,7 +112,7 @@ class ProductBulkForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["rate", "mrp", "gst_rate", "scheme_percent", "active"]
+        fields = ["rate", "mrp", "gst_rate", "scheme_percent", "active", "regular"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
