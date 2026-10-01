@@ -64,6 +64,13 @@ A product's **scheme %** is a trade scheme shown to shops as a badge in the PWA 
 
 Order updates: shops tap **Get order updates** on the Orders screen to allow notifications. When staff change an order's status in the console, every subscribed device for that mobile number gets a web push. This needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_ADMIN_EMAIL` in the service environment; without them the button hides and the console simply skips notifying.
 
+## Daily rhythm
+
+- **Order days** — each shop picks weekdays on its console form (Mon–Sun chips). A cron runs the reminder each morning:
+  `python manage.py send_order_day_reminders` at 08:30 pushes “Today is your order day” to the shops scheduled for today.
+- **Daily deals** — Console → **Deals** assigns one product and an extra trade scheme % to each weekday. The app shows a *Today's deal* card, a deal chip on the product, and a “Deals this week” shelf; `python manage.py send_daily_deal` at 09:00 pushes the day's deal to every subscribed device.
+- Both commands are safe to run by hand, and the console dashboard has **Order-day reminders** and **Today's deal** buttons that fire them immediately.
+
 Prices are integer paise everywhere. `POST /api/orders` body:
 
 ```json

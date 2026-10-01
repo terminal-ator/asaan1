@@ -1,0 +1,62 @@
+{% extends 'console/base.html' %}
+
+{% block content %}
+<main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
+  <div class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-wider text-brand-600">Catalogue</p>
+      <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Daily deals</h1>
+      <p class="mt-1 text-sm text-slate-500">One product on extra discount each weekday. Shops see today's deal at the top of the app, and can get a morning push.</p>
+    </div>
+    <form method="post">{% csrf_token %}
+      <button name="send" value="1" class="inline-flex items-center justify-center rounded-xl border border-brand-600 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-100">
+        Send today's deal now
+      </button>
+    </form>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-4 py-3 font-semibold sm:px-6">Day</th>
+              <th class="min-w-[280px] px-4 py-3 font-semibold">Product</th>
+              <th class="w-28 px-4 py-3 font-semibold">Extra %</th>
+              <th class="min-w-[180px] px-4 py-3 font-semibold">Note</th>
+              <th class="px-4 py-3 font-semibold sm:px-6">Active</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for row in rows %}
+            <tr class="{% if row.today %}bg-brand-50/60{% endif %}">
+              <td class="whitespace-nowrap px-4 py-3 font-semibold sm:px-6">
+                {{ row.label }}{% if row.today %}<span class="ml-2 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">Today</span>{% endif %}
+                {{ row.form.weekday }}
+              </td>
+              <td class="px-4 py-3">
+                {{ row.form.product }}
+                {% for error in row.form.product.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-3">
+                {{ row.form.percent }}
+                {% for error in row.form.percent.errors %}<p class="mt-1 text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-3">{{ row.form.note }}</td>
+              <td class="px-4 py-3 sm:px-6">{{ row.form.active }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="mt-4 flex items-center justify-between gap-3">
+      <p class="text-xs text-slate-500">Leave a day empty to clear it. The extra % is a trade scheme settled on the Marg bill.</p>
+      <button class="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700">Save week</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

@@ -14,7 +14,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
-from catalogue.models import Brand, Category, Company, Order, OrderItem, Product, Shop
+from catalogue.models import Brand, Category, Company, DailyDeal, Order, OrderItem, Product, Shop
 from console.views import _consolidated_items
 
 
@@ -266,6 +266,50 @@ class ConsoleOrderFlowTests(TestCase):
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, "processing")
         send_order_status.assert_called_once()
+
+    def test_shop_form_saves_order_days(self):
+        shop = Shop.objects.create(store_name="Order day shop", mobile="9000000010")
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-shop-edit", args=[shop.id]),
+            {
+                "store_name": shop.store_name,
+                "mobile": shop.mobile,
+                "order_days": ["1", "4"],
+                "active": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        shop.refresh_from_db()
+        self.assertEqual(shop.order_days, [1, 4])
+
+    def test_deals_sheet_saves_and_clears_a_day(self):
+        self.client.force_login(self.user)
+        data = {
+            "form-TOTAL_FORMS": "7",
+            "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0",
+            "form-MAX_NUM_FORMS": "7",
+        }
+        for day in range(7):
+            data[f"form-{day}-weekday"] = str(day)
+            data[f"form-{day}-percent"] = ""
+            data[f"form-{day}-note"] = ""
+        data["form-3-product"] = str(self.product.id)
+        data["form-3-percent"] = "8.00"
+        data["form-3-note"] = "Thursday special"
+        data["form-3-active"] = "on"
+
+        response = self.client.post(reverse("console-deals"), data)
+        self.assertEqual(response.status_code, 302)
+        deal = DailyDeal.objects.get(weekday=3)
+        self.assertEqual(deal.product, self.product)
+        self.assertEqual(str(deal.percent), "8.00")
+
+        data["form-3-product"] = ""
+        response = self.client.post(reverse("console-deals"), data)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(DailyDeal.objects.filter(weekday=3).exists())
 
     def test_shop_form_requires_name_and_mobile(self):
         self.client.force_login(self.user)

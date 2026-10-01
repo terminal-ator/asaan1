@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import DistributorProfile, Order, OrderItem, Product, PushSubscription, Shop
+from .models import DistributorProfile, DailyDeal, Order, OrderItem, Product, PushSubscription, Shop
 
 
 @require_GET
@@ -73,9 +73,23 @@ def catalogue(request):
         "company", "brand", "category"
     )
     profile = DistributorProfile.objects.first()
+    deals = (
+        DailyDeal.objects.filter(active=True, product__active=True)
+        .select_related("product")
+        .order_by("weekday")
+    )
     return JsonResponse(
         {
             "supportPhone": profile.phone if profile else "",
+            "deals": [
+                {
+                    "weekday": deal.weekday,
+                    "productId": str(deal.product_id),
+                    "percent": str(deal.percent),
+                    "note": deal.note,
+                }
+                for deal in deals
+            ],
             "products": [
                 {
                     "id": str(product.id),

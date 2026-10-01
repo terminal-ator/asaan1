@@ -47,6 +47,40 @@ class HSN(models.Model):
         return f"{self.code} ({self.default_gst_rate}%)"
 
 
+class DailyDeal(models.Model):
+    """The product on promo each weekday, Subway-style."""
+
+    WEEKDAYS = [
+        (0, "Monday"),
+        (1, "Tuesday"),
+        (2, "Wednesday"),
+        (3, "Thursday"),
+        (4, "Friday"),
+        (5, "Saturday"),
+        (6, "Sunday"),
+    ]
+
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS, unique=True)
+    product = models.ForeignKey(
+        "Product", on_delete=models.CASCADE, related_name="daily_deals"
+    )
+    percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    note = models.CharField(max_length=150, blank=True)
+    active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["weekday"]
+
+    def __str__(self):
+        return f"{self.get_weekday_display()}: {self.product}"
+
+
 class Loading(models.Model):
     STATUS_CHOICES = [
         ("open", "Open"),
@@ -77,6 +111,9 @@ class Shop(models.Model):
     latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     location_accuracy = models.PositiveIntegerField(null=True, blank=True)
+    # Weekdays the shop orders on, Monday = 0 … Sunday = 6. Empty means no
+    # reminder. Stored as a list of ints so the console can tick boxes.
+    order_days = models.JSONField(default=list, blank=True)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -254,6 +254,33 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .repeat-copy small { display: block; margin-top: 2px; font-size: 12px; color: var(--body); }
 .repeat-go { font-size: 20px; color: var(--brand); }
 
+/* Daily deals */
+.deal-block { margin: 10px 16px 2px; }
+.deal-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #f0d9a8;
+  border-radius: 16px;
+  background: var(--warning-soft);
+  color: var(--ink);
+  text-align: left;
+}
+.deal-hero:active { background: #ffe9bd; }
+.deal-tag { grid-column: 1 / -1; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; color: var(--warning); }
+.deal-copy { min-width: 0; }
+.deal-copy b { display: block; font-size: 14px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deal-copy small { display: block; margin-top: 2px; font-size: 12px; color: var(--body); }
+.deal-price { text-align: right; font-variant-numeric: tabular-nums; }
+.deal-price strong { display: block; font-size: 15px; font-weight: 750; }
+.deal-price small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); text-decoration: line-through; }
+.deal-week-link { margin-top: 6px; border: 0; background: none; color: var(--brand); font-size: 12.5px; font-weight: 700; padding: 4px 0; }
+.deal-chip { display: inline-block; margin-right: 6px; padding: 2px 7px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
+.deal-photo { position: relative; }
+.deal-day { position: absolute; left: 3px; bottom: 3px; padding: 2px 5px; border-radius: 999px; background: rgba(28, 27, 25, .78); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; }
+
 /* Order status + notifications */
 .orders-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .orders-heading h1 { margin: 18px 0; }

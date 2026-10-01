@@ -5,6 +5,9 @@ from . import views
 
 urlpatterns = [
     path("", views.dashboard, name="console-dashboard"),
+    path("deals", views.deals, name="console-deals"),
+    path("deals/send", views.send_deal, name="console-send-deal"),
+    path("reminders/send", views.send_reminders, name="console-send-reminders"),
     path("sales", views.sales_register, name="console-sales-register"),
     path(
         "orders/<uuid:order_id>/status",

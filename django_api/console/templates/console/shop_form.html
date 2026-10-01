@@ -9,6 +9,13 @@
       {% for field in form %}
       {% if field.name == 'active' %}
       <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">{{ field }}<span>{{ field.label }}</span></label>
+      {% elif field.name == 'order_days' %}
+      <label class="block lg:col-span-2">
+        <span class="mb-1.5 block text-sm font-semibold text-slate-700">{{ field.label }}</span>
+        <span class="flex flex-wrap gap-2 [&_div]:flex [&_div]:flex-wrap [&_div]:gap-2 [&_label]:inline-flex [&_label]:items-center [&_label]:gap-1.5 [&_label]:rounded-full [&_label]:border [&_label]:border-slate-300 [&_label]:px-3 [&_label]:py-1.5 [&_label]:text-xs [&_label]:font-semibold [&_label]:text-slate-700">{{ field }}</span>
+        {% if field.help_text %}<span class="mt-1 block text-xs text-slate-400">{{ field.help_text }}</span>{% endif %}
+        {% for error in field.errors %}<span class="mt-1 block text-xs text-rose-600">{{ error }}</span>{% endfor %}
+      </label>
       {% else %}
       <label class="block {% if field.name == 'address' %}lg:col-span-2{% endif %}"><span class="mb-1.5 block text-sm font-semibold text-slate-700">{{ field.label }}{% if field.field.required %}<span class="text-rose-500"> *</span>{% endif %}</span>{{ field }}{% for error in field.errors %}<span class="mt-1 block text-xs text-rose-600">{{ error }}</span>{% endfor %}</label>
       {% endif %}

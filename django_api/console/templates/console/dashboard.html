@@ -27,6 +27,17 @@
     </div>
   </div>
 
+  <form method="post" class="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-card">
+    {% csrf_token %}
+    <p class="mr-auto text-sm font-semibold text-slate-600">Send a push now</p>
+    <button formaction="{% url 'console-send-reminders' %}" class="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600">
+      Order-day reminders
+    </button>
+    <button formaction="{% url 'console-send-deal' %}" class="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:text-brand-600">
+      Today's deal
+    </button>
+  </form>
+
   <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
     <div class="rounded-2xl bg-white p-4 shadow-card ring-1 ring-slate-200/80">
       <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Received</p>

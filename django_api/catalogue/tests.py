@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -7,8 +8,18 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from .models import Brand, Category, Company, Order, OrderItem, Product, PushSubscription
-from .push import send_order_status
+from .models import (
+    Brand,
+    Category,
+    Company,
+    DailyDeal,
+    Order,
+    OrderItem,
+    Product,
+    PushSubscription,
+    Shop,
+)
+from .push import send_daily_deal, send_order_day_reminders, send_order_status
 
 
 class OrderApiTests(TestCase):
@@ -218,6 +229,81 @@ class OrderStatusApiTests(TestCase):
         )
         send_order_status(self.order)
         self.assertFalse(PushSubscription.objects.exists())
+
+
+class NotificationPushTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="Deal Co")
+        self.brand = Brand.objects.create(name="Deal Brand")
+        self.category = Category.objects.create(name="Deal Cat")
+        self.product = Product.objects.create(
+            sku="DEAL-1",
+            name="Deal item",
+            company=self.company,
+            brand=self.brand,
+            category=self.category,
+            packing="Box",
+            unit="box",
+            rate=1000,
+            mrp=1200,
+        )
+        self.today = date.today().weekday()
+
+    def test_catalogue_includes_daily_deals(self):
+        DailyDeal.objects.create(
+            weekday=self.today, product=self.product, percent="8.00", note="Today only"
+        )
+        response = self.client.get("/api/catalogue")
+        deals = response.json()["deals"]
+        self.assertEqual(len(deals), 1)
+        self.assertEqual(deals[0]["weekday"], self.today)
+        self.assertEqual(deals[0]["productId"], str(self.product.id))
+        self.assertEqual(deals[0]["percent"], "8.00")
+
+    @override_settings(VAPID_PRIVATE_KEY="private", VAPID_PUBLIC_KEY="public")
+    @patch("catalogue.push.webpush")
+    def test_order_day_reminder_only_reaches_todays_shops(self, webpush):
+        Shop.objects.create(
+            store_name="Today shop", mobile="9000000001", order_days=[self.today]
+        )
+        Shop.objects.create(
+            store_name="Other shop",
+            mobile="9000000002",
+            order_days=[(self.today + 1) % 7],
+        )
+        PushSubscription.objects.create(
+            mobile="9000000001",
+            endpoint="https://push.example/a",
+            keys={"p256dh": "k", "auth": "s"},
+        )
+        PushSubscription.objects.create(
+            mobile="9000000002",
+            endpoint="https://push.example/b",
+            keys={"p256dh": "k", "auth": "s"},
+        )
+        shops, sent = send_order_day_reminders()
+        self.assertEqual(shops, 1)
+        self.assertEqual(sent, 1)
+        self.assertEqual(webpush.call_count, 1)
+        payload = json.loads(webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], "Today is your order day")
+        self.assertIn("Today shop", payload["body"])
+
+    @override_settings(VAPID_PRIVATE_KEY="private", VAPID_PUBLIC_KEY="public")
+    @patch("catalogue.push.webpush")
+    def test_daily_deal_push_reaches_subscribers(self, webpush):
+        DailyDeal.objects.create(weekday=self.today, product=self.product, percent="8.00")
+        PushSubscription.objects.create(
+            mobile="9000000001",
+            endpoint="https://push.example/a",
+            keys={"p256dh": "k", "auth": "s"},
+        )
+        deal, sent = send_daily_deal()
+        self.assertIsNotNone(deal)
+        self.assertEqual(sent, 1)
+        payload = json.loads(webpush.call_args.kwargs["data"])
+        self.assertIn("Deal item", payload["body"])
+        self.assertIn("8%", payload["title"])
 
 
 class AdminProductImportTests(TestCase):

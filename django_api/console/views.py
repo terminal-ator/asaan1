@@ -13,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q, Sum
-from django.forms import modelformset_factory
+from django.forms import formset_factory, modelformset_factory
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -21,11 +21,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from catalogue.push import send_order_status
+from catalogue.push import send_daily_deal, send_order_day_reminders, send_order_status
 from catalogue.models import (
     Brand,
     Category,
     Company,
+    DailyDeal,
     DistributorProfile,
     Loading,
     Order,
@@ -41,6 +42,7 @@ from catalogue.models import (
 )
 
 from .forms import ProductBulkForm, ProductForm, ShopBulkForm
+from .deal_forms import DealRowForm
 from .order_forms import OrderBillingForm
 from .shop_forms import ShopForm
 from .profile_forms import DistributorProfileForm
@@ -99,6 +101,91 @@ def update_order_status(request, order_id):
         )
 
     return redirect("console-dashboard")
+
+
+@login_required
+@require_POST
+def send_reminders(request):
+    shops, sent = send_order_day_reminders()
+    messages.success(
+        request,
+        f"{shops} shop{'' if shops == 1 else 's'} order today · "
+        f"{sent} notification{'' if sent == 1 else 's'} sent.",
+    )
+    return redirect("console-dashboard")
+
+
+@login_required
+@require_POST
+def send_deal(request):
+    deal, sent = send_daily_deal()
+    if deal:
+        messages.success(
+            request,
+            f"Today's deal ({deal.product}) sent to "
+            f"{sent} device{'' if sent == 1 else 's'}.",
+        )
+    else:
+        messages.error(request, "No active deal for today.")
+    return redirect("console-dashboard")
+
+
+DealFormSet = formset_factory(DealRowForm, extra=7, max_num=7)
+
+
+@login_required
+def deals(request):
+    deals_by_day = {
+        deal.weekday: deal for deal in DailyDeal.objects.select_related("product")
+    }
+    initial = [
+        {
+            "weekday": day,
+            "product": deals_by_day[day].product_id if day in deals_by_day else None,
+            "percent": deals_by_day[day].percent if day in deals_by_day else None,
+            "note": deals_by_day[day].note if day in deals_by_day else "",
+            "active": deals_by_day[day].active if day in deals_by_day else True,
+        }
+        for day, _ in DailyDeal.WEEKDAYS
+    ]
+    formset = DealFormSet(request.POST or None, initial=initial)
+
+    if request.method == "POST" and "send" in request.POST:
+        deal, sent = send_daily_deal()
+        if deal:
+            messages.success(
+                request,
+                f"Today's deal sent to {sent} device{'' if sent == 1 else 's'}.",
+            )
+        else:
+            messages.error(request, "No active deal for today.")
+        return redirect("console-deals")
+
+    if request.method == "POST" and formset.is_valid():
+        for form in formset:
+            weekday = form.cleaned_data["weekday"]
+            product = form.cleaned_data["product"]
+            if product:
+                DailyDeal.objects.update_or_create(
+                    weekday=weekday,
+                    defaults={
+                        "product": product,
+                        "percent": form.cleaned_data["percent"] or 0,
+                        "note": form.cleaned_data["note"],
+                        "active": form.cleaned_data["active"],
+                    },
+                )
+            else:
+                DailyDeal.objects.filter(weekday=weekday).delete()
+        messages.success(request, "Weekly deals saved.")
+        return redirect("console-deals")
+
+    today = date.today().weekday()
+    rows = [
+        {"form": form, "label": label, "day": day, "today": day == today}
+        for form, (day, label) in zip(formset.forms, DailyDeal.WEEKDAYS)
+    ]
+    return render(request, "console/deals.html", {"rows": rows})
 
 
 def _order_tax(order):
