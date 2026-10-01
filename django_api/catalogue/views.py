@@ -87,6 +87,7 @@ def catalogue(request):
                     "packing": product.packing,
                     "unit": product.unit,
                     "rate": product.rate,
+                    "rateInclusive": product.rate_inclusive,
                     "mrp": product.mrp,
                     "gstRate": str(product.gst_rate),
                     "schemePercent": str(product.scheme_percent),

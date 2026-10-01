@@ -228,10 +228,11 @@ class ConsoleOrderFlowTests(TestCase):
         self.assertEqual(shop.store_name, "Old name")
         self.assertEqual(shop.mobile, "9000000000")
 
-    def test_products_list_shows_retail_margin(self):
+    def test_products_list_shows_retail_margin_after_gst(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("console-products"))
-        self.assertContains(response, "Retail margin ₹20.00 · 16.7%")
+        # ₹100 + 18% GST = ₹118 paid by the shop; margin is MRP ₹120 - ₹118.
+        self.assertContains(response, "Retail margin ₹2.00 · 1.7%")
 
     def test_shop_form_requires_name_and_mobile(self):
         self.client.force_login(self.user)

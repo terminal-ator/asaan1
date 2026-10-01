@@ -1,4 +1,4 @@
-const CACHE = 'asaan-shell-v1'
+const CACHE = 'asaan-shell-v2'
 
 self.addEventListener('install', event => {
   self.skipWaiting()

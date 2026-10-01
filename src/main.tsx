@@ -16,7 +16,7 @@ import './product-images.css'
 // developing, and in production the reverse proxy serves the built PWA next to Django.
 const apiURL = import.meta.env.VITE_API_URL ?? ''
 
-type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; mrp: number; schemePercent?: string; gstRate?: string; hsnCode?: string; imageUrl?: string; updatedAt: string; createdAt: string }
+type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; rateInclusive?: number; mrp: number; schemePercent?: string; gstRate?: string; hsnCode?: string; imageUrl?: string; updatedAt: string; createdAt: string }
 type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number }
 type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string }
 type Shop = { storeName: string; customerName: string; mobile: string; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
@@ -34,6 +34,10 @@ class AsaanDB extends Dexie {
 const db = new AsaanDB()
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(paise / 100)
 const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `${apiURL}${product.imageUrl}` : product.imageUrl
+// Shops judge a rate against MRP, and MRP includes GST. The catalogue sends
+// rateInclusive; cached products from before it did are converted here. Cart
+// lines already store the inclusive rate, so this returns it unchanged.
+const inclusiveRate = (product: { rate: number; rateInclusive?: number; gstRate?: string }) => product.rateInclusive ?? product.rate + Math.round(product.rate * (Number(product.gstRate) || 0) / 100)
 // A shop profile without a name or mobile is useless for billing, so treat it
 // as not set up and ask for the details again.
 const hasShopDetails = (shop: Shop | null): shop is Shop => Boolean(shop?.storeName?.trim() && shop?.mobile?.trim())
@@ -67,13 +71,33 @@ function App() {
     if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js')
   }, [])
 
+  // The catalogue changes during the day. Refresh when the app returns to the
+  // foreground or the connection comes back, not only on a cold start.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') void refreshCatalogue() }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('online', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('online', refresh)
+    }
+  }, [])
+
   async function refreshCatalogue() {
     try {
       const response = await fetch(`${apiURL}/api/catalogue`)
       if (!response.ok) throw new Error()
       const payload = await response.json() as { products: Product[] }
-      await db.products.bulkPut(payload.products)
+      // Replace the offline copy in full: a product removed or deactivated in
+      // the console must not reappear the next time the app starts offline.
+      const current = new Set(payload.products.map(product => product.id))
+      await db.transaction('rw', db.products, async () => {
+        await db.products.bulkPut(payload.products)
+        const stale = await db.products.filter(product => !current.has(product.id)).primaryKeys()
+        await db.products.bulkDelete(stale)
+      })
       setProducts(payload.products)
+      setMessage(message => message.startsWith('Showing saved catalogue') ? '' : message)
     } catch { setMessage('Showing saved catalogue. Updates will sync when you are online.') }
   }
 
@@ -94,7 +118,7 @@ function App() {
       ? cart.filter(item => !(item.id === target.id && item.unit === target.unit))
       : found
         ? cart.map(item => item === found ? { ...item, quantity } : item)
-        : [...cart, { id: target.id, sku: target.sku, name: target.simpleName || target.name, unit: target.unit, rate: target.rate, quantity }]
+        : [...cart, { id: target.id, sku: target.sku, name: target.simpleName || target.name, unit: target.unit, rate: inclusiveRate(target), quantity }]
     void saveCart(next)
   }
 
@@ -156,7 +180,7 @@ function App() {
     const next = order.items.flatMap(item => {
       const product = productByID.get(item.id)
       if (!product) { unavailable.push(item.name); return [] }
-      return [{ id: product.id, sku: product.sku, name: product.simpleName || product.name, unit: product.unit, rate: product.rate, quantity: item.quantity }]
+      return [{ id: product.id, sku: product.sku, name: product.simpleName || product.name, unit: product.unit, rate: inclusiveRate(product), quantity: item.quantity }]
     })
     await saveCart(next)
     setScreen('catalogue')
@@ -272,7 +296,7 @@ function Catalogue(props: { products: Product[]; newProducts: Product[]; cart: C
   const filterCount = (props.company ? 1 : 0) + (props.brand ? 1 : 0)
   // Open the panel whenever a filter is applied so the choice stays visible.
   useEffect(() => { if (props.company || props.brand) setFiltersOpen(true) }, [props.company, props.brand])
-  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showNewProducts && <section className="new-products"><div><b>New products</b><small>Recently added to the catalogue</small></div><div className="new-product-row">{props.newProducts.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(product.rate)}</small></button>)}</div></section>}<div className="count">{props.products.length} products · Tap a product to enter quantity</div><div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}>{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<div className="product-info"><b>{product.simpleName || product.name}</b><small>{product.packing} · {product.company}</small><strong>{money(product.rate)} <em>/{product.unit}</em>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}</strong></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
+  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showNewProducts && <section className="new-products"><div><b>New products</b><small>Recently added to the catalogue</small></div><div className="new-product-row">{props.newProducts.map(product => <button key={product.id} onClick={() => openKeypad(product)}><span>{product.company}</span><b>{product.simpleName || product.name}</b><small>{product.packing} · {money(inclusiveRate(product))} incl. GST</small></button>)}</div></section>}<div className="count">{props.products.length} products · Tap a product to enter quantity</div><div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}>{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<div className="product-info"><b>{product.simpleName || product.name}</b><small>{product.packing} · {product.company}</small><strong>{money(inclusiveRate(product))} <em>/{product.unit} incl. GST</em>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}</strong></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
 }
 
 function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { value: number; decrement: () => void; increment: () => void; onInput: (value: number) => void; onOpenKeypad?: () => void }) {
@@ -320,11 +344,12 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
   const scheme = Number(product.schemePercent) || 0
   const gst = Number(product.gstRate) || 0
   const image = imageSource(product)
-  const unitMargin = Math.max(0, product.mrp - product.rate)
+  const rate = inclusiveRate(product)
+  const unitMargin = Math.max(0, product.mrp - rate)
   const marginPercent = product.mrp > 0 ? (unitMargin / product.mrp) * 100 : 0
   const quantity = Number(value) || 0
   const rows: { label: string; value: string; numeric?: boolean }[] = [
-    { label: `Rate / ${product.unit}`, value: money(product.rate), numeric: true },
+    { label: `Rate / ${product.unit} (incl. GST)`, value: money(rate), numeric: true },
     { label: 'MRP', value: product.mrp > 0 ? money(product.mrp) : '—', numeric: true },
     ...(unitMargin > 0 ? [{ label: 'Margin / unit', value: `${money(unitMargin)} · ${marginPercent.toFixed(1)}%`, numeric: true }] : []),
     ...(scheme > 0 ? [{ label: 'Scheme', value: `${scheme}%`, numeric: true }] : []),
@@ -350,8 +375,8 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
       </div>
 
       <div className="keypad-price">
-        <strong>{money(product.rate)} <em>/{product.unit}</em></strong>
-        {product.mrp > product.rate && <s>{money(product.mrp)}</s>}
+        <strong>{money(rate)} <em>/{product.unit} incl. GST</em></strong>
+        {product.mrp > rate && <s>{money(product.mrp)}</s>}
         {scheme > 0 && <span className="scheme-chip">{scheme}% scheme</span>}
       </div>
 
@@ -366,7 +391,7 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
       </div>}
 
       <div className="keypad-grid">{['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(key => <button key={key} onClick={() => pressKey(key)}>{key}</button>)}<button className="keypad-clear" onClick={() => pressKey('clear')}>Clear</button><button onClick={() => pressKey('0')}>0</button><button aria-label="Backspace" onClick={() => pressKey('backspace')}>⌫</button></div>
-      <button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * product.rate)}` : 'Remove from order'}</button>
+      <button className="keypad-save" onClick={onSave}>{Number(value) > 0 ? `Update quantity · ${money(Number(value) * rate)}` : 'Remove from order'}</button>
 
       <p className="detail-heading">Product details</p>
       <table className="detail-table">
@@ -380,7 +405,7 @@ function Keypad({ product, value, pressKey, onClose, onSave }: { product: Produc
 
 function Cart({ cart, total, margin, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; margin: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
   const clear = () => { if (window.confirm('Clear all items from this cart?')) onClear() }
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{cart.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></td><td className="num"><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /></td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total</td><td>{money(total)}</td></tr>{margin > 0 && <tr className="margin-row"><td>Your retail margin<small>If sold at MRP</small></td><td>{money(margin)}</td></tr>}</tbody></table><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{cart.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></td><td className="num"><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /></td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(total)}</td></tr>{margin > 0 && <tr className="margin-row"><td>Your retail margin<small>If sold at MRP</small></td><td>{money(margin)}</td></tr>}</tbody></table><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
 }
 
 function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void> }) {
@@ -393,7 +418,7 @@ function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: Lo
 }
 
 function OrderSummary({ order, onBack, onRepeat, onCancel }: { order: LocalOrder; onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void>; onCancel: () => void }) {
-  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div><span className={order.status}>{order.status}</span><h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{order.items.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit}</small></td><td className="num">{item.quantity} ×</td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total</td><td>{money(order.total)}</td></tr></tbody></table><button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
+  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div><span className={order.status}>{order.status}</span><h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{order.items.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small></td><td className="num">{item.quantity} ×</td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(order.total)}</td></tr></tbody></table><button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
 }
 
 createRoot(document.getElementById('root')!).render(<App />)

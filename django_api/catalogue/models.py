@@ -298,9 +298,23 @@ class Product(models.Model):
         return self.simple_name or self.name
 
     @property
+    def gst_amount(self):
+        """GST charged on one unit at the stored (pre-GST) rate."""
+        return round(Decimal(self.rate) * self.gst_rate / Decimal("100"))
+
+    @property
+    def rate_inclusive(self):
+        """What a shop actually pays per unit: the stored rate plus GST."""
+        return self.rate + self.gst_amount
+
+    @property
     def retail_margin(self):
-        """What the shop makes per unit when it sells at MRP."""
-        return max(0, self.mrp - self.rate)
+        """What the shop makes per unit at MRP.
+
+        MRP includes GST, so compare it with the tax-inclusive rate. Using the
+        pre-GST rate would count the GST as margin.
+        """
+        return max(0, self.mrp - self.rate_inclusive)
 
     @property
     def retail_margin_percent(self):

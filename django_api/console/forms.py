@@ -6,7 +6,7 @@ from catalogue.models import Brand, Category, Company, HSN, Product, Shop
 
 
 class ProductForm(forms.ModelForm):
-    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Sale rate (₹)")
+    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Sale rate (₹, before GST)", help_text="Shops are shown this rate plus GST.")
     mrp = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="MRP (₹)")
     company_name = forms.ModelChoiceField(queryset=Company.objects.order_by("name"), label="Company", empty_label="Select company")
     brand_name = forms.ModelChoiceField(queryset=Brand.objects.order_by("name"), label="Brand", empty_label="Select brand")
@@ -106,7 +106,7 @@ SHEET_INPUT_WIDE = SHEET_INPUT.replace("min-w-[104px]", "min-w-[208px]")
 class ProductBulkForm(forms.ModelForm):
     """One row of the product sheet. Prices are entered in rupees, stored in paise."""
 
-    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Rate (₹)")
+    rate = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="Rate (₹, before GST)")
     mrp = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, label="MRP (₹)")
 
     class Meta:

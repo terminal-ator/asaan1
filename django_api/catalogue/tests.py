@@ -90,6 +90,14 @@ class OrderApiTests(TestCase):
         response = self.client.get("/api/catalogue")
         self.assertEqual(response.json()["products"][0]["schemePercent"], "10.00")
 
+    def test_catalogue_includes_the_tax_inclusive_rate(self):
+        self.product.gst_rate = "18.00"
+        self.product.save(update_fields=["gst_rate"])
+        response = self.client.get("/api/catalogue")
+        product = response.json()["products"][0]
+        self.assertEqual(product["rate"], 10000)
+        self.assertEqual(product["rateInclusive"], 11800)
+
     def test_order_snapshots_the_scheme(self):
         self.product.scheme_percent = "7.50"
         self.product.save(update_fields=["scheme_percent"])
@@ -168,6 +176,13 @@ class ProductMarginTests(TestCase):
     def test_retail_margin_per_unit_and_percent_of_mrp(self):
         self.assertEqual(self.product.retail_margin, 2000)
         self.assertEqual(self.product.retail_margin_percent, Decimal("20.0"))
+
+    def test_margin_does_not_count_gst_as_profit(self):
+        self.product.gst_rate = Decimal("18.00")
+        # ₹100 MRP - (₹80 + 18% GST = ₹94.40) = ₹5.60, not ₹20.
+        self.assertEqual(self.product.rate_inclusive, 9440)
+        self.assertEqual(self.product.retail_margin, 560)
+        self.assertEqual(self.product.retail_margin_percent, Decimal("5.6"))
 
     def test_no_margin_when_mrp_does_not_exceed_the_rate(self):
         self.product.mrp = 7000
