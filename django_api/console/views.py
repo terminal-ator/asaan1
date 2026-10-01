@@ -695,7 +695,9 @@ def loading_detail(request, loading_id):
 @login_required
 def products(request):
     query = request.GET.get("q", "").strip()
-    items = Product.objects.all()
+    company = request.GET.get("company", "").strip()
+    brand = request.GET.get("brand", "").strip()
+    items = Product.objects.select_related("company", "brand")
 
     if query:
         items = items.filter(
@@ -705,11 +707,37 @@ def products(request):
             | Q(company__name__icontains=query)
             | Q(brand__name__icontains=query)
         )
+    if company:
+        items = items.filter(company__name=company)
+    if brand:
+        items = items.filter(brand__name=brand)
+
+    # Filter choices mirror the PWA: brands follow the selected company, and
+    # both lists only offer values the catalogue actually uses.
+    companies = list(
+        Product.objects.order_by("company__name")
+        .values_list("company__name", flat=True)
+        .distinct()
+    )
+    brand_scope = (
+        Product.objects.filter(company__name=company) if company else Product.objects.all()
+    )
+    brands = list(
+        brand_scope.order_by("brand__name").values_list("brand__name", flat=True).distinct()
+    )
 
     return render(
         request,
         "console/products.html",
-        {"products": items[:200], "query": query},
+        {
+            "products": items[:200],
+            "total": items.count(),
+            "query": query,
+            "company": company,
+            "brand": brand,
+            "companies": companies,
+            "brands": brands,
+        },
     )
 
 

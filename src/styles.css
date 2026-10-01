@@ -239,10 +239,16 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 }
 .product small, .history small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .product small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.product small .scheme-chip { margin-left: 0; margin-right: 6px; }
 .product strong { font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; align-items: baseline; gap: 6px; min-width: 0; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.product strong .rate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.product strong .scheme-chip { flex: 0 0 auto; margin-left: 0; }
+.product strong .rate { display: flex; align-items: baseline; gap: 4px; flex: 0 1 auto; min-width: 0; }
+.product strong .amount { flex: 0 0 auto; white-space: nowrap; }
+.product strong .unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product strong .mrp { flex: 0 0 auto; font-size: 11px; font-weight: 500; color: var(--faint); white-space: nowrap; }
 .product em { font-size: 11px; font-style: normal; font-weight: 500; color: var(--faint); }
+/* On the narrowest phones the unit is the first thing to go, so the rate and
+   MRP stay readable instead of a lone slash. */
+@media (max-width: 340px) { .product strong .unit { display: none; } }
 .scheme-chip {
   display: inline-block;
   margin-left: 6px;
