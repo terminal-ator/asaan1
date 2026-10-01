@@ -2,7 +2,7 @@
 
 Retailer ordering PWA plus a distributor console.
 
-- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue, like products for a personal shortlist (the **Liked** filter), shuffle a random **Discover** shelf for new items, and submit orders that queue locally until the API is reachable.
+- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue, like products for a personal shortlist (the **Liked** filter), reorder in one tap (the **Order again** card and the **Usual** shelf built from their own history), see live **order status**, share an order on WhatsApp, shuffle a random **Discover** shelf, and submit orders that queue locally until the API is reachable.
 - **API and console (`django_api/`)** — Django serves the catalogue and receives orders, and provides the staff console for reviewing orders, printing slips, grouping dispatch loadings, managing products and shops, purchases, returns, inventory, and GST reports.
 
 ## Current billing workflow
@@ -56,9 +56,13 @@ A product's **scheme %** is a trade scheme shown to shops as a badge in the PWA 
 
 - `GET /api/catalogue` — active products for the PWA.
 - `POST /api/orders` — accepts an order snapshot; repeated `clientOrderId` values are idempotent.
+- `GET /api/orders/status?ids=…` — console status per `clientOrderId`, for the shop's order list.
+- `GET /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` — web-push registration for order-status notifications.
 - `GET /healthz` — liveness probe; returns 503 when the database is unreachable.
 - `/admin/` — Django admin, including the Product CSV import action.
 - `/console/` — staff console.
+
+Order updates: shops tap **Get order updates** on the Orders screen to allow notifications. When staff change an order's status in the console, every subscribed device for that mobile number gets a web push. This needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_ADMIN_EMAIL` in the service environment; without them the button hides and the console simply skips notifying.
 
 Prices are integer paise everywhere. `POST /api/orders` body:
 

@@ -17,10 +17,10 @@ import './product-images.css'
 const apiURL = import.meta.env.VITE_API_URL ?? ''
 
 type Product = { id: string; sku: string; name: string; simpleName?: string; company: string; brand: string; category: string; packing: string; unit: string; rate: number; rateInclusive?: number; mrp: number; schemePercent?: string; gstRate?: string; hsnCode?: string; imageUrl?: string; regular?: boolean; updatedAt: string; createdAt: string }
-type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number }
+type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number; packing?: string }
 type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string }
 type Shop = { storeName: string; customerName: string; mobile: string; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
-type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string }
+type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string; serverStatus?: string }
 
 class AsaanDB extends Dexie {
   products!: EntityTable<Product, 'id'>
@@ -41,6 +41,23 @@ const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `$
 // rateInclusive; cached products from before it did are converted here. Cart
 // lines already store the inclusive rate, so this returns it unchanged.
 const inclusiveRate = (product: { rate: number; rateInclusive?: number; gstRate?: string }) => product.rateInclusive ?? product.rate + Math.round(product.rate * (Number(product.gstRate) || 0) / 100)
+// Console statuses, in the words a shop understands.
+const STATUS_LABELS: Record<string, string> = { received: 'Received', processing: 'Being packed', completed: 'Completed', cancelled: 'Cancelled' }
+const statusLabel = (status?: string) => STATUS_LABELS[status ?? ''] ?? (status || '')
+// "1 × 12" on a piece-counted product means a case holds 12 pieces, so the
+// stepper moves in cases. A product already counted in cases keeps step 1.
+const caseSize = (packing?: string, unit?: string) => {
+  const match = packing?.match(/[×x]\s*(\d{1,4})/)
+  if (!match) return 1
+  const pieceUnit = unit ? /pcs|piece|nos|unit|packet|sachet|bottle|tube|bar/i.test(unit) : false
+  return pieceUnit ? Math.max(1, Number(match[1])) : 1
+}
+// Push subscriptions want the VAPID key as bytes, not base64url.
+const urlBase64ToUint8Array = (base64: string) => {
+  const padding = '='.repeat((4 - base64.length % 4) % 4)
+  const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(raw, character => character.charCodeAt(0))
+}
 // A shop profile without a name or mobile is useless for billing, so treat it
 // as not set up and ask for the details again.
 const hasShopDetails = (shop: Shop | null): shop is Shop => Boolean(shop?.storeName?.trim() && shop?.mobile?.trim())
@@ -63,17 +80,27 @@ function App() {
   const [message, setMessage] = useState('')
   const [likes, setLikes] = useState<string[]>([])
   const [likedOnly, setLikedOnly] = useState(false)
-  // One shelf slot: New, Regular or the random Discover picks, never two.
-  const [shelf, setShelf] = useState<'new' | 'regular' | 'discover' | null>('new')
+  // One shelf slot: New, Regular, Your usual or the random Discover picks.
+  const [shelf, setShelf] = useState<'new' | 'regular' | 'usual' | 'discover' | null>('new')
   const [discoverSeed, setDiscoverSeed] = useState(0)
+  const cartRef = useRef<CartItem[]>([])
+  const [history, setHistory] = useState<LocalOrder[]>([])
+  const [supportPhone, setSupportPhone] = useState('')
+  const [pushAvailable, setPushAvailable] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
 
   useEffect(() => {
     void (async () => {
       setProducts(await db.products.toArray())
       setLikes((await db.likes.toArray()).map(like => like.id))
-      setCart((await db.cart.get('current'))?.items ?? [])
+      const savedCart = (await db.cart.get('current'))?.items ?? []
+      cartRef.current = savedCart
+      setCart(savedCart)
+      await loadHistory()
       await refreshCatalogue()
       await retryPendingOrders()
+      await refreshStatuses()
+      await checkPush()
     })()
     // A cache-first service worker is useful after deployment, but makes local
     // development appear stale after an edit.
@@ -83,7 +110,7 @@ function App() {
   // The catalogue changes during the day. Refresh when the app returns to the
   // foreground or the connection comes back, not only on a cold start.
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') void refreshCatalogue() }
+    const refresh = () => { if (document.visibilityState === 'visible') { void refreshCatalogue(); void refreshStatuses() } }
     document.addEventListener('visibilitychange', refresh)
     window.addEventListener('online', refresh)
     return () => {
@@ -91,6 +118,77 @@ function App() {
       window.removeEventListener('online', refresh)
     }
   }, [])
+
+  async function loadHistory() {
+    setHistory(await db.orders.orderBy('createdAt').reverse().toArray())
+  }
+
+  async function refreshStatuses() {
+    const orders = await db.orders.toArray()
+    if (!orders.length) return
+    try {
+      const response = await fetch(`${apiURL}/api/orders/status?ids=${orders.map(order => order.clientOrderId).join(',')}`)
+      if (!response.ok) return
+      const payload = await response.json() as { orders: { clientOrderId: string; orderNumber: string; status: string }[] }
+      for (const entry of payload.orders) {
+        const order = orders.find(candidate => candidate.clientOrderId === entry.clientOrderId)
+        if (!order || order.serverStatus === entry.status) continue
+        await db.orders.put({ ...order, orderNumber: entry.orderNumber, serverStatus: entry.status })
+        // Only announce a change once we already knew the previous status.
+        if (order.serverStatus) notifyStatus(order, entry.status)
+      }
+      await loadHistory()
+    } catch { /* offline; the next open checks again */ }
+  }
+
+  function notifyStatus(order: LocalOrder, status: string) {
+    const text = `Order ${order.orderNumber ?? ''} · ${statusLabel(status)}`
+    setMessage(text)
+    if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+      void navigator.serviceWorker.ready
+        .then(registration => registration.showNotification('Asaan order update', { body: text, icon: '/icon.svg', badge: '/icon.svg', data: { url: '/' } }))
+        .catch(() => { /* the in-app notice is enough */ })
+    }
+  }
+
+  async function checkPush() {
+    try {
+      const response = await fetch(`${apiURL}/api/push/key`)
+      if (!response.ok) return
+      const payload = await response.json() as { key: string }
+      setPushAvailable(Boolean(payload.key))
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready
+        setPushEnabled(Boolean(await registration.pushManager.getSubscription()))
+      }
+    } catch { /* offline */ }
+  }
+
+  async function enableNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setMessage('This browser cannot show order updates.'); return }
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') { setMessage('Notifications were not allowed.'); return }
+      const response = await fetch(`${apiURL}/api/push/key`)
+      const { key } = await response.json() as { key: string }
+      if (!key) { setMessage('Order updates are not set up yet.'); return }
+      const registration = await navigator.serviceWorker.ready
+      const subscription = (await registration.pushManager.getSubscription()) ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) })
+      await fetch(`${apiURL}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile: shop?.mobile ?? '', subscription: subscription.toJSON() }),
+      })
+      setPushEnabled(true)
+      setMessage('Order updates are on for this device.')
+    } catch { setMessage('Could not turn on order updates. Try again later.') }
+  }
+
+  function shareOrder(order: LocalOrder) {
+    const lines = order.items.slice(0, 40).map(item => `• ${item.name} — ${item.quantity} ${item.unit}`)
+    const text = `Order ${order.orderNumber ?? order.clientOrderId.slice(0, 8)}\n${lines.join('\n')}\nTentative total: ${money(order.total)}\n${order.shop.storeName} · ${order.shop.mobile}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener')
+  }
 
   async function refreshCatalogue() {
     try {
@@ -126,6 +224,7 @@ function App() {
   }
 
   async function saveCart(next: CartItem[]) {
+    cartRef.current = next
     setCart(next)
     await db.cart.put({ id: 'current', items: next })
   }
@@ -135,14 +234,17 @@ function App() {
     setQuantity(target, (found?.quantity ?? 0) + delta)
   }
 
+  // Two taps in the same tick would both read the same stale cart, so keep the
+  // latest lines in a ref and write through it.
   function setQuantity(target: QuantityTarget, quantity: number) {
     quantity = Number.isFinite(quantity) ? Math.max(0, Math.floor(quantity)) : 0
-    const found = cart.find(item => item.id === target.id && item.unit === target.unit)
+    const current = cartRef.current
+    const found = current.find(item => item.id === target.id && item.unit === target.unit)
     const next = quantity <= 0
-      ? cart.filter(item => !(item.id === target.id && item.unit === target.unit))
+      ? current.filter(item => !(item.id === target.id && item.unit === target.unit))
       : found
-        ? cart.map(item => item === found ? { ...item, quantity } : item)
-        : [...cart, { id: target.id, sku: target.sku, name: target.simpleName || target.name, unit: target.unit, rate: inclusiveRate(target), quantity }]
+        ? current.map(item => item === found ? { ...item, quantity } : item)
+        : [...current, { id: target.id, sku: target.sku, name: target.simpleName || target.name, unit: target.unit, rate: inclusiveRate(target), quantity, packing: target.packing }]
     void saveCart(next)
   }
 
@@ -176,6 +278,8 @@ function App() {
       await db.orders.put({ ...order, status: 'pending' })
       if (showResult) setMessage('Order saved on this device and will submit automatically when you are online.')
     }
+    // The home shelves and the Orders screen read this list.
+    await refreshStatuses()
   }
 
   async function placeOrder() {
@@ -204,7 +308,7 @@ function App() {
     const next = order.items.flatMap(item => {
       const product = productByID.get(item.id)
       if (!product) { unavailable.push(item.name); return [] }
-      return [{ id: product.id, sku: product.sku, name: product.simpleName || product.name, unit: product.unit, rate: inclusiveRate(product), quantity: item.quantity }]
+      return [{ id: product.id, sku: product.sku, name: product.simpleName || product.name, unit: product.unit, rate: inclusiveRate(product), quantity: item.quantity, packing: product.packing }]
     })
     await saveCart(next)
     setScreen('catalogue')
@@ -250,14 +354,27 @@ function App() {
   }, [cart, products])
   const newProducts = useMemo(() => [...products].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 8), [products])
   const regularProducts = useMemo(() => products.filter(product => product.regular), [products])
+  // What this shop actually buys, ranked from its own order history.
+  const usual = useMemo(() => {
+    const byId = new Map(products.map(product => [product.id, product]))
+    const bought = new Map<string, number>()
+    for (const order of history) {
+      for (const item of order.items) bought.set(item.id, (bought.get(item.id) ?? 0) + item.quantity)
+    }
+    return [...bought.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => byId.get(id))
+      .filter((product): product is Product => Boolean(product))
+      .slice(0, 8)
+  }, [history, products])
 
   if (!hasShopDetails(shop)) return <Registration initial={shop} onSave={saved => { localStorage.setItem('asaan-shop', JSON.stringify(saved)); setShop(saved) }} />
   return <main className={screen === 'catalogue' ? 'catalogue' : undefined}>
-    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{shop.storeName}</span></div></div><div className="header-actions"><button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} /></div></header>
+    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{shop.storeName}</span></div></div><div className="header-actions">{supportPhone && <a className="quiet" href={`https://wa.me/${supportPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Help</a>}<button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} callHref={supportPhone ? `tel:${supportPhone}` : undefined} /></div></header>
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
-    {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} regular={regularProducts} discover={discover} shelf={shelf} setShelf={setShelf} cart={cart} likes={likes} likedOnly={likedOnly} setLikedOnly={setLikedOnly} shuffleDiscover={() => setDiscoverSeed(seed => seed + 1)} toggleLike={id => void toggleLike(id)} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
+    {screen === 'catalogue' && <Catalogue products={filtered} newProducts={newProducts} regular={regularProducts} usual={usual} lastOrder={history[0] ?? null} onRepeat={order => void repeatOrder(order)} discover={discover} shelf={shelf} setShelf={setShelf} cart={cart} likes={likes} likedOnly={likedOnly} setLikedOnly={setLikedOnly} shuffleDiscover={() => setDiscoverSeed(seed => seed + 1)} toggleLike={id => void toggleLike(id)} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'cart' && <Cart cart={cart} total={total} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
-    {screen === 'orders' && <Orders onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} />}
+    {screen === 'orders' && <Orders orders={history} supportPhone={supportPhone} pushAvailable={pushAvailable} pushEnabled={pushEnabled} onEnablePush={() => void enableNotifications()} onShare={shareOrder} onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} onChanged={loadHistory} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
   </main>
 }
@@ -294,7 +411,7 @@ function Registration({ initial, onSave }: { initial?: Shop | null; onSave: (sho
 
 function Field({ label, value, onChange, required = false, maxLength, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number; type?: string }) { return <label>{label}{required && <span className="required-mark"> *</span>}<input type={type} value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }
 
-function Menu({ onLogout }: { onLogout: () => void }) {
+function Menu({ onLogout, callHref }: { onLogout: () => void; callHref?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -310,6 +427,7 @@ function Menu({ onLogout }: { onLogout: () => void }) {
     {open && <div className="menu-list" role="menu">
       <button role="menuitem" onClick={() => window.location.reload()}>Refresh</button>
       <button role="menuitem" onClick={() => void clearCacheAndReload()}>Clear cache &amp; reload</button>
+      {callHref && <a role="menuitem" href={callHref}>Call support</a>}
       <button role="menuitem" className="danger" onClick={onLogout}>Log out</button>
     </div>}
   </div>
@@ -323,7 +441,7 @@ function ShelfCard({ product, onOpen }: { product: Product; onOpen: (product: Pr
   </button>
 }
 
-function Catalogue(props: { products: Product[]; newProducts: Product[]; regular: Product[]; discover: Product[]; shelf: 'new' | 'regular' | 'discover' | null; setShelf: (v: 'new' | 'regular' | 'discover' | null) => void; cart: CartItem[]; likes: string[]; likedOnly: boolean; setLikedOnly: (v: boolean) => void; shuffleDiscover: () => void; toggleLike: (id: string) => void; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
+function Catalogue(props: { products: Product[]; newProducts: Product[]; regular: Product[]; usual: Product[]; lastOrder: LocalOrder | null; onRepeat: (order: LocalOrder) => void; discover: Product[]; shelf: 'new' | 'regular' | 'usual' | 'discover' | null; setShelf: (v: 'new' | 'regular' | 'usual' | 'discover' | null) => void; cart: CartItem[]; likes: string[]; likedOnly: boolean; setLikedOnly: (v: boolean) => void; shuffleDiscover: () => void; toggleLike: (id: string) => void; query: string; setQuery: (v: string) => void; company: string; setCompany: (v: string) => void; brand: string; setBrand: (v: string) => void; companies: string[]; brands: string[]; changeQuantity: (p: Product, d: number) => void; setQuantity: (p: Product, q: number) => void }) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [keypadProduct, setKeypadProduct] = useState<Product | null>(null)
   const [keypadValue, setKeypadValue] = useState('')
@@ -344,7 +462,7 @@ function Catalogue(props: { products: Product[]; newProducts: Product[]; regular
   const filterCount = (props.company ? 1 : 0) + (props.brand ? 1 : 0)
   // Open the panel whenever a filter is applied so the choice stays visible.
   useEffect(() => { if (props.company || props.brand) setFiltersOpen(true) }, [props.company, props.brand])
-  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div><div className="quick-row"><button type="button" className={`quick-toggle ${props.likedOnly ? 'active' : ''}`} aria-pressed={props.likedOnly} onClick={() => props.setLikedOnly(!props.likedOnly)}><svg viewBox="0 0 24 24" fill={props.likedOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg><span>Liked</span>{props.likes.length > 0 && <span className="quick-count">{props.likes.length}</span>}</button><button type="button" className={`quick-toggle ${props.shelf === 'new' ? 'active' : ''}`} aria-pressed={props.shelf === 'new'} onClick={() => props.setShelf(props.shelf === 'new' ? null : 'new')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z" /></svg><span>New</span></button>{props.regular.length > 0 && <button type="button" className={`quick-toggle ${props.shelf === 'regular' ? 'active' : ''}`} aria-pressed={props.shelf === 'regular'} onClick={() => props.setShelf(props.shelf === 'regular' ? null : 'regular')}><svg viewBox="0 0 24 24" fill={props.shelf === 'regular' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8z" /></svg><span>Regular</span></button>}<button type="button" className={`quick-toggle ${props.shelf === 'discover' ? 'active' : ''}`} aria-pressed={props.shelf === 'discover'} onClick={() => props.setShelf(props.shelf === 'discover' ? null : 'discover')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="m4 4 5 5" /></svg><span>Discover</span></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showShelf && props.shelf === 'new' && <section className="new-products"><div><b>New products</b><small>Recently added · rates include GST</small></div><div className="new-product-row">{props.newProducts.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}{showShelf && props.shelf === 'regular' && props.regular.length > 0 && <section className="new-products"><div><b>Regular</b><small>Most selling · rates include GST</small></div><div className="new-product-row">{props.regular.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}{showShelf && props.shelf === 'discover' && <section className="new-products discover"><div><b>Discover</b><small>Random picks · rates include GST</small><button type="button" className="shuffle-button" onClick={props.shuffleDiscover}>Shuffle</button></div><div className="new-product-row">{props.discover.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}<div className="count">{props.likedOnly ? `${props.products.length} liked item${props.products.length === 1 ? '' : 's'}` : `${props.products.length} products`} · Rates include GST</div>{props.products.length === 0 && <p className="empty">{props.likedOnly ? 'No liked items yet. Tap the heart on a product to save it here.' : 'No products match your search.'}</p>}<div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}><div className="product-main"><span className="product-photo">{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<button type="button" className={`like-button ${likedSet.has(product.id) ? 'on' : ''}`} aria-label={likedSet.has(product.id) ? 'Remove from liked' : 'Add to liked'} aria-pressed={likedSet.has(product.id)} onClick={event => { event.stopPropagation(); props.toggleLike(product.id) }}><svg viewBox="0 0 24 24" fill={likedSet.has(product.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg></button></span><div className="product-info"><b>{product.simpleName || product.name}</b><small>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}{product.packing} · {product.company}</small><strong><span className="rate"><span className="amount">{money(inclusiveRate(product))}</span> <em className="unit">/{product.unit}</em></span><span className="mrp">MRP {money(product.mrp)}</span></strong></div></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -1)} increment={() => props.changeQuantity(product, 1)} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} liked={likedSet.has(keypadProduct.id)} onToggleLike={() => props.toggleLike(keypadProduct.id)} pressKey={pressKey} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
+  return <><section className="controls"><div className="search-row"><input className="search" placeholder="Search product, brand, SKU…" value={props.query} onChange={e => props.setQuery(e.target.value)} /><button type="button" className={`filter-toggle ${filterCount ? 'active' : ''} ${filtersOpen ? 'open' : ''}`} onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="catalogue-filters"><svg className="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg><span className="filter-label">Filters</span>{filterCount > 0 && <span className="filter-count">{filterCount}</span>}<svg className="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button></div><div className="quick-row"><button type="button" className={`quick-toggle ${props.likedOnly ? 'active' : ''}`} aria-pressed={props.likedOnly} onClick={() => props.setLikedOnly(!props.likedOnly)}><svg viewBox="0 0 24 24" fill={props.likedOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg><span>Liked</span>{props.likes.length > 0 && <span className="quick-count">{props.likes.length}</span>}</button><button type="button" className={`quick-toggle ${props.shelf === 'new' ? 'active' : ''}`} aria-pressed={props.shelf === 'new'} onClick={() => props.setShelf(props.shelf === 'new' ? null : 'new')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z" /></svg><span>New</span></button>{props.regular.length > 0 && <button type="button" className={`quick-toggle ${props.shelf === 'regular' ? 'active' : ''}`} aria-pressed={props.shelf === 'regular'} onClick={() => props.setShelf(props.shelf === 'regular' ? null : 'regular')}><svg viewBox="0 0 24 24" fill={props.shelf === 'regular' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8z" /></svg><span>Regular</span></button>}{props.usual.length > 0 && <button type="button" className={`quick-toggle ${props.shelf === 'usual' ? 'active' : ''}`} aria-pressed={props.shelf === 'usual'} onClick={() => props.setShelf(props.shelf === 'usual' ? null : 'usual')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.9-6.6" /><path d="M3 4v5h5" /></svg><span>Usual</span></button>}<button type="button" className={`quick-toggle ${props.shelf === 'discover' ? 'active' : ''}`} aria-pressed={props.shelf === 'discover'} onClick={() => props.setShelf(props.shelf === 'discover' ? null : 'discover')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="m4 4 5 5" /></svg><span>Discover</span></button></div>{filtersOpen && <div className="filters-panel" id="catalogue-filters"><div className="filter-group"><span>Company</span><div className="filter-row"><button className={`filter-pill ${!props.company ? 'selected' : ''}`} onClick={() => { props.setCompany(''); props.setBrand('') }}>All companies</button>{props.companies.map(value => <button key={value} className={`filter-pill ${props.company === value ? 'selected' : ''}`} onClick={() => { props.setCompany(value); props.setBrand('') }}>{value}</button>)}</div></div><div className="filter-group brands"><span>{props.company ? `${props.company} brands` : 'Brand'}</span><div className="filter-row"><button className={`filter-pill ${!props.brand ? 'selected' : ''}`} onClick={() => props.setBrand('')}>All brands</button>{props.brands.map(value => <button key={value} className={`filter-pill ${props.brand === value ? 'selected' : ''}`} onClick={() => props.setBrand(value)}>{value}</button>)}</div></div></div>}</section>{showShelf && props.lastOrder && <button type="button" className="repeat-card" onClick={() => props.lastOrder && props.onRepeat(props.lastOrder)}><span className="repeat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.9-6.6" /><path d="M21 4v5h-5" /></svg></span><span className="repeat-copy"><b>Order again</b><small>{props.lastOrder.items.length} item{props.lastOrder.items.length === 1 ? '' : 's'} · {money(props.lastOrder.total)} · {new Date(props.lastOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</small></span><span className="repeat-go" aria-hidden="true">›</span></button>}{showShelf && props.shelf === 'new' && <section className="new-products"><div><b>New products</b><small>Recently added · rates include GST</small></div><div className="new-product-row">{props.newProducts.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}{showShelf && props.shelf === 'regular' && props.regular.length > 0 && <section className="new-products"><div><b>Regular</b><small>Most selling · rates include GST</small></div><div className="new-product-row">{props.regular.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}{showShelf && props.shelf === 'usual' && props.usual.length > 0 && <section className="new-products"><div><b>Your usual</b><small>From your past orders · rates include GST</small></div><div className="new-product-row">{props.usual.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}{showShelf && props.shelf === 'discover' && <section className="new-products discover"><div><b>Discover</b><small>Random picks · rates include GST</small><button type="button" className="shuffle-button" onClick={props.shuffleDiscover}>Shuffle</button></div><div className="new-product-row">{props.discover.map(product => <ShelfCard key={product.id} product={product} onOpen={openKeypad} />)}</div></section>}<div className="count">{props.likedOnly ? `${props.products.length} liked item${props.products.length === 1 ? '' : 's'}` : `${props.products.length} products`} · Rates include GST</div>{props.products.length === 0 && <p className="empty">{props.likedOnly ? 'No liked items yet. Tap the heart on a product to save it here.' : 'No products match your search.'}</p>}<div ref={parentRef} className="product-list"><div style={{ height: virtual.getTotalSize(), position: 'relative' }}>{virtual.getVirtualItems().map(item => { const product = props.products[item.index]; const quantity = props.cart.find(line => line.id === product.id)?.quantity ?? 0; return <article className="product" key={product.id} onClick={() => openKeypad(product)} style={{ transform: `translateY(${item.start}px)` }}><div className="product-main"><span className="product-photo">{imageSource(product) ? <img className="product-image" src={imageSource(product)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none' }} /> : <span className="product-image placeholder">▦</span>}<button type="button" className={`like-button ${likedSet.has(product.id) ? 'on' : ''}`} aria-label={likedSet.has(product.id) ? 'Remove from liked' : 'Add to liked'} aria-pressed={likedSet.has(product.id)} onClick={event => { event.stopPropagation(); props.toggleLike(product.id) }}><svg viewBox="0 0 24 24" fill={likedSet.has(product.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg></button></span><div className="product-info"><b>{product.simpleName || product.name}</b><small>{Number(product.schemePercent) > 0 && <span className="scheme-chip">{Number(product.schemePercent)}% scheme</span>}{product.packing} · {product.company}</small><strong><span className="rate"><span className="amount">{money(inclusiveRate(product))}</span> <em className="unit">/{product.unit}</em></span><span className="mrp">MRP {money(product.mrp)}</span></strong></div></div><Quantity value={quantity} decrement={() => props.changeQuantity(product, -caseSize(product.packing, product.unit))} increment={() => props.changeQuantity(product, caseSize(product.packing, product.unit))} onInput={value => props.setQuantity(product, value)} onOpenKeypad={() => openKeypad(product)} /></article> })}</div></div>{keypadProduct && <Keypad product={keypadProduct} value={keypadValue} liked={likedSet.has(keypadProduct.id)} onToggleLike={() => props.toggleLike(keypadProduct.id)} pressKey={pressKey} onAddCase={() => setKeypadValue(value => String(Math.min(99999, (Number(value) || 0) + caseSize(keypadProduct.packing, keypadProduct.unit))))} onClose={() => setKeypadProduct(null)} onSave={() => { props.setQuantity(keypadProduct, Number(keypadValue)); setKeypadProduct(null) }} />}</>
 }
 
 function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { value: number; decrement: () => void; increment: () => void; onInput: (value: number) => void; onOpenKeypad?: () => void }) {
@@ -388,7 +506,7 @@ function Quantity({ value, decrement, increment, onInput, onOpenKeypad }: { valu
   </div>
 }
 
-function Keypad({ product, value, liked, onToggleLike, pressKey, onClose, onSave }: { product: Product; value: string; liked: boolean; onToggleLike: () => void; pressKey: (key: string) => void; onClose: () => void; onSave: () => void }) {
+function Keypad({ product, value, liked, onToggleLike, pressKey, onAddCase, onClose, onSave }: { product: Product; value: string; liked: boolean; onToggleLike: () => void; pressKey: (key: string) => void; onAddCase: () => void; onClose: () => void; onSave: () => void }) {
   const scheme = Number(product.schemePercent) || 0
   const gst = Number(product.gstRate) || 0
   const image = imageSource(product)
@@ -430,6 +548,8 @@ function Keypad({ product, value, liked, onToggleLike, pressKey, onClose, onSave
 
       <div className="keypad-display">{value || '0'}</div>
 
+      {caseSize(product.packing, product.unit) > 1 && <div className="keypad-case"><span>1 case = {caseSize(product.packing, product.unit)} {product.unit}</span><button type="button" onClick={onAddCase}>+1 case</button></div>}
+
       {unitMargin > 0 && <div className="keypad-margin">
         <span>Retail margin<small>{marginPercent.toFixed(1)}% of MRP</small></span>
         <span className="keypad-margin-value">
@@ -453,20 +573,18 @@ function Keypad({ product, value, liked, onToggleLike, pressKey, onClose, onSave
 
 function Cart({ cart, total, margin, onBack, onSubmit, onClear, changeQuantity, setQuantity }: { cart: CartItem[]; total: number; margin: number; onBack: () => void; onSubmit: () => void; onClear: () => void; changeQuantity: (target: QuantityTarget, d: number) => void; setQuantity: (target: QuantityTarget, q: number) => void }) {
   const clear = () => { if (window.confirm('Clear all items from this cart?')) onClear() }
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{cart.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></td><td className="num"><Quantity value={item.quantity} decrement={() => changeQuantity(item, -1)} increment={() => changeQuantity(item, 1)} onInput={value => setQuantity(item, value)} /></td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(total)}</td></tr>{margin > 0 && <tr className="margin-row"><td>Your retail margin<small>If sold at MRP</small></td><td>{money(margin)}</td></tr>}</tbody></table><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="cart-heading"><h1>Your order</h1>{cart.length > 0 && <button onClick={clear}>Clear cart</button>}</div>{cart.length === 0 ? <p className="empty">Your cart is empty.</p> : <><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{cart.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small><button className="remove-line" onClick={() => setQuantity(item, 0)}>Remove</button></td><td className="num"><Quantity value={item.quantity} decrement={() => changeQuantity(item, -caseSize(item.packing, item.unit))} increment={() => changeQuantity(item, caseSize(item.packing, item.unit))} onInput={value => setQuantity(item, value)} /></td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(total)}</td></tr>{margin > 0 && <tr className="margin-row"><td>Your retail margin<small>If sold at MRP</small></td><td>{money(margin)}</td></tr>}</tbody></table><p className="hint">Final rates, schemes, tax and availability are confirmed during billing.</p><button className="primary" onClick={() => void onSubmit()}>Submit order</button></>}</section>
 }
 
-function Orders({ onBack, onRepeat }: { onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void> }) {
-  const [orders, setOrders] = useState<LocalOrder[]>([])
-  const [selected, setSelected] = useState<LocalOrder | null>(null)
-  const load = () => void db.orders.orderBy('createdAt').reverse().toArray().then(setOrders)
-  useEffect(load, [])
-  if (selected) return <OrderSummary order={selected} onBack={() => setSelected(null)} onRepeat={onRepeat} onCancel={() => { void db.orders.delete(selected.clientOrderId).then(() => { load(); setSelected(null) }) }} />
-  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><h1>Previous orders</h1>{orders.length === 0 ? <p className="empty">No orders yet.</p> : orders.map(order => <article className="history clickable" key={order.clientOrderId} role="button" tabIndex={0} onClick={() => setSelected(order)} onKeyDown={event => { if (event.key === 'Enter') setSelected(order) }}><div><b>{order.orderNumber ?? 'Waiting to submit'}</b><small>{new Date(order.createdAt).toLocaleString('en-IN')} · {order.items.length} items</small></div><span className={order.status}>{order.status}</span><strong>{money(order.total)}</strong><span className="chevron">›</span></article>)}</section>
+function Orders({ orders, supportPhone, pushAvailable, pushEnabled, onEnablePush, onShare, onBack, onRepeat, onChanged }: { orders: LocalOrder[]; supportPhone: string; pushAvailable: boolean; pushEnabled: boolean; onEnablePush: () => void; onShare: (order: LocalOrder) => void; onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void>; onChanged: () => Promise<void> }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = selectedId ? orders.find(order => order.clientOrderId === selectedId) ?? null : null
+  if (selected) return <OrderSummary order={selected} supportPhone={supportPhone} onShare={onShare} onBack={() => setSelectedId(null)} onRepeat={onRepeat} onCancel={async () => { await db.orders.delete(selected.clientOrderId); await onChanged(); setSelectedId(null) }} />
+  return <section className="page"><button className="back" onClick={onBack}>← Catalogue</button><div className="orders-heading"><h1>Previous orders</h1>{pushAvailable && !pushEnabled && <button type="button" className="enable-push" onClick={onEnablePush}>Get order updates</button>}</div>{pushAvailable && pushEnabled && <p className="orders-note">Order updates are on for this device. We will tell you when the status changes.</p>}{orders.length === 0 ? <p className="empty">No orders yet.</p> : orders.map(order => <article className="history clickable" key={order.clientOrderId} role="button" tabIndex={0} onClick={() => setSelectedId(order.clientOrderId)} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(order.clientOrderId) }}><div><b>{order.orderNumber ?? 'Waiting to submit'}</b><small>{new Date(order.createdAt).toLocaleString('en-IN')} · {order.items.length} items</small></div>{order.serverStatus ? <span className={`server-status ${order.serverStatus}`}>{statusLabel(order.serverStatus)}</span> : <span className={order.status}>{order.status}</span>}<strong>{money(order.total)}</strong><span className="chevron">›</span></article>)}</section>
 }
 
-function OrderSummary({ order, onBack, onRepeat, onCancel }: { order: LocalOrder; onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void>; onCancel: () => void }) {
-  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div><span className={order.status}>{order.status}</span><h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{order.items.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small></td><td className="num">{item.quantity} ×</td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(order.total)}</td></tr></tbody></table><button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
+function OrderSummary({ order, supportPhone, onShare, onBack, onRepeat, onCancel }: { order: LocalOrder; supportPhone: string; onShare: (order: LocalOrder) => void; onBack: () => void; onRepeat: (order: LocalOrder) => Promise<void>; onCancel: () => void }) {
+  return <section className="page summary"><button className="back" onClick={onBack}>← Previous orders</button><div className="summary-heading"><div>{order.serverStatus ? <span className={`server-status ${order.serverStatus}`}>{statusLabel(order.serverStatus)}</span> : <span className={order.status}>{order.status}</span>}<h1>{order.orderNumber ?? 'Order waiting to submit'}</h1><p>{new Date(order.createdAt).toLocaleString('en-IN')}</p>{order.error && <p className="error">{order.error}</p>}</div><b>{money(order.total)}</b></div><section className="summary-shop"><b>{order.shop.storeName}</b><small>{order.shop.customerName && `${order.shop.customerName} · `}{order.shop.mobile}</small>{order.shop.address && <small>{order.shop.address}</small>}</section><h2>Items</h2><table className="list-table"><thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Amount</th></tr></thead><tbody>{order.items.map(item => <tr key={`${item.id}-${item.unit}`}><td className="item"><b>{item.name}</b><small>{money(item.rate)} / {item.unit} incl. GST</small></td><td className="num">{item.quantity} ×</td><td className="num amount">{money(item.quantity * item.rate)}</td></tr>)}</tbody></table><table className="totals-table"><tbody><tr><td>Tentative total<small>Inclusive of GST</small></td><td>{money(order.total)}</td></tr></tbody></table>{order.orderNumber && <button className="share-button" onClick={() => onShare(order)}>Share on WhatsApp</button>}<button className="primary" onClick={() => void onRepeat(order)}>Repeat this order</button>{supportPhone && <a className="summary-help" href={`https://wa.me/${supportPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Need help? WhatsApp us</a>}{order.status === 'pending' && <button className="summary-cancel" onClick={onCancel}>Cancel queued order</button>}</section>
 }
 
 createRoot(document.getElementById('root')!).render(<App />)

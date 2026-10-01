@@ -237,6 +237,7 @@ class PurchaseReturnItem(models.Model):
 class DistributorProfile(models.Model):
     legal_name = models.CharField(max_length=200, default="Asaan Distributor")
     gstin = models.CharField(max_length=15, blank=True)
+    phone = models.CharField(max_length=30, blank=True, default="")
     address = models.TextField(blank=True)
     state = models.CharField(max_length=100, blank=True)
     invoice_prefix = models.CharField(max_length=10, default="INV")
@@ -244,6 +245,18 @@ class DistributorProfile(models.Model):
 
     def __str__(self):
         return self.legal_name
+
+
+class PushSubscription(models.Model):
+    """A shop device that agreed to order-status notifications."""
+
+    mobile = models.CharField(max_length=30, db_index=True)
+    endpoint = models.URLField(max_length=500, unique=True)
+    keys = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.mobile} · {self.endpoint[-24:]}"
 
 
 class InvoiceSequence(models.Model):

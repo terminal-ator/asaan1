@@ -5,6 +5,7 @@ import tempfile
 import uuid
 
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -253,6 +254,18 @@ class ConsoleOrderFlowTests(TestCase):
         response = self.client.get(reverse("console-products"))
         # ₹100 + 18% GST = ₹118 paid by the shop; margin is MRP ₹120 - ₹118.
         self.assertContains(response, "Retail margin ₹2.00 · 1.7%")
+
+    @patch("console.views.send_order_status")
+    def test_status_change_notifies_the_shop(self, send_order_status):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("console-order-status", args=[self.order.id]),
+            {"status": "processing"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, "processing")
+        send_order_status.assert_called_once()
 
     def test_shop_form_requires_name_and_mobile(self):
         self.client.force_login(self.user)

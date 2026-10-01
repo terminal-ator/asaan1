@@ -3,3 +3,4 @@ django-cors-headers>=4.7,<5
 Pillow>=11,<12
 gunicorn>=23,<24
 psycopg[binary]>=3.2,<4
+pywebpush>=2,<3

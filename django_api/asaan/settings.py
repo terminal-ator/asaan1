@@ -29,6 +29,12 @@ LOGIN_URL='/admin/login/'
 LOGIN_REDIRECT_URL='/console/'
 # TLS terminates at the reverse proxy; trust its forwarded protocol header.
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
+# Web push: set both keys (and an admin contact) to enable order-status
+# notifications. Without them the API reports no key and the PWA hides the
+# notifications switch.
+VAPID_PUBLIC_KEY=os.getenv('VAPID_PUBLIC_KEY','')
+VAPID_PRIVATE_KEY=os.getenv('VAPID_PRIVATE_KEY','')
+VAPID_ADMIN_EMAIL=os.getenv('VAPID_ADMIN_EMAIL','')
 # Enable only when the console is served over HTTPS.
 SESSION_COOKIE_SECURE=os.getenv('DJANGO_SECURE_COOKIES','false').lower()=='true'
 CSRF_COOKIE_SECURE=SESSION_COOKIE_SECURE

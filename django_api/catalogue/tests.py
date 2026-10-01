@@ -1,12 +1,14 @@
 import json
 import uuid
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
-from .models import Brand, Category, Company, Order, OrderItem, Product
+from .models import Brand, Category, Company, Order, OrderItem, Product, PushSubscription
+from .push import send_order_status
 
 
 class OrderApiTests(TestCase):
@@ -131,6 +133,91 @@ class OrderApiTests(TestCase):
         response = self.client.get("/healthz")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+
+class OrderStatusApiTests(TestCase):
+    def setUp(self):
+        self.order = Order.objects.create(
+            client_order_id="status-1",
+            order_number="ORD-STATUS-1",
+            shop={"storeName": "Shop", "mobile": "9999999999"},
+            total=100,
+            status="processing",
+        )
+
+    def test_status_endpoint_returns_console_status(self):
+        response = self.client.get("/api/orders/status?ids=status-1,missing")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["orders"],
+            [
+                {
+                    "clientOrderId": "status-1",
+                    "orderNumber": "ORD-STATUS-1",
+                    "status": "processing",
+                }
+            ],
+        )
+
+    def test_push_key_is_empty_until_configured(self):
+        self.assertEqual(self.client.get("/api/push/key").json()["key"], "")
+        with override_settings(VAPID_PUBLIC_KEY="BC-test-key"):
+            self.assertEqual(
+                self.client.get("/api/push/key").json()["key"], "BC-test-key"
+            )
+
+    def test_push_subscription_is_stored_and_removed(self):
+        body = {
+            "mobile": "9999999999",
+            "subscription": {
+                "endpoint": "https://push.example/abc",
+                "keys": {"p256dh": "key", "auth": "secret"},
+            },
+        }
+        response = self.client.post(
+            "/api/push/subscribe",
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        subscription = PushSubscription.objects.get()
+        self.assertEqual(subscription.mobile, "9999999999")
+
+        response = self.client.post(
+            "/api/push/unsubscribe",
+            data=json.dumps({"endpoint": "https://push.example/abc"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    @override_settings(VAPID_PRIVATE_KEY="private", VAPID_PUBLIC_KEY="public")
+    @patch("catalogue.push.webpush")
+    def test_status_push_reaches_subscribed_devices(self, webpush):
+        PushSubscription.objects.create(
+            mobile="9999999999",
+            endpoint="https://push.example/abc",
+            keys={"p256dh": "key", "auth": "secret"},
+        )
+        self.assertEqual(send_order_status(self.order), 1)
+        webpush.assert_called_once()
+
+    @override_settings(VAPID_PRIVATE_KEY="private", VAPID_PUBLIC_KEY="public")
+    @patch("catalogue.push.webpush")
+    def test_gone_subscription_is_deleted(self, webpush):
+        from pywebpush import WebPushException
+
+        class Gone:
+            status_code = 410
+
+        webpush.side_effect = WebPushException("gone", response=Gone())
+        PushSubscription.objects.create(
+            mobile="9999999999",
+            endpoint="https://push.example/abc",
+            keys={"p256dh": "key", "auth": "secret"},
+        )
+        send_order_status(self.order)
+        self.assertFalse(PushSubscription.objects.exists())
 
 
 class AdminProductImportTests(TestCase):

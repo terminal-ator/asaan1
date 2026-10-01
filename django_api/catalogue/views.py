@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Order, OrderItem, Product, Shop
+from .models import DistributorProfile, Order, OrderItem, Product, PushSubscription, Shop
 
 
 @require_GET
@@ -72,8 +72,10 @@ def catalogue(request):
     products = Product.objects.filter(active=True).select_related(
         "company", "brand", "category"
     )
+    profile = DistributorProfile.objects.first()
     return JsonResponse(
         {
+            "supportPhone": profile.phone if profile else "",
             "products": [
                 {
                     "id": str(product.id),
@@ -104,6 +106,75 @@ def catalogue(request):
 
 def _error(message, status=400):
     return JsonResponse({"error": message}, status=status)
+
+
+@require_GET
+def order_status(request):
+    """Current console status for orders this device already placed."""
+    ids = [
+        value.strip()
+        for value in request.GET.get("ids", "").split(",")
+        if value.strip()
+    ][:100]
+    if not ids:
+        return JsonResponse({"orders": []})
+    rows = Order.objects.filter(client_order_id__in=ids).values(
+        "client_order_id", "order_number", "status"
+    )
+    return JsonResponse(
+        {
+            "orders": [
+                {
+                    "clientOrderId": row["client_order_id"],
+                    "orderNumber": row["order_number"],
+                    "status": row["status"],
+                }
+                for row in rows
+            ]
+        }
+    )
+
+
+@require_GET
+def push_key(request):
+    from django.conf import settings
+
+    return JsonResponse({"key": settings.VAPID_PUBLIC_KEY})
+
+
+@csrf_exempt
+@require_POST
+def push_subscribe(request):
+    from django.conf import settings
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _error("invalid JSON")
+    mobile = (data.get("mobile") or "").strip()
+    subscription = data.get("subscription") or {}
+    endpoint = (subscription.get("endpoint") or "").strip()
+    keys = subscription.get("keys") or {}
+    if not mobile or not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+        return _error("mobile and subscription are required")
+    PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={"mobile": mobile, "keys": keys},
+    )
+    return JsonResponse({"ok": True, "enabled": bool(settings.VAPID_PUBLIC_KEY)})
+
+
+@csrf_exempt
+@require_POST
+def push_unsubscribe(request):
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _error("invalid JSON")
+    endpoint = (data.get("endpoint") or "").strip()
+    if endpoint:
+        PushSubscription.objects.filter(endpoint=endpoint).delete()
+    return JsonResponse({"ok": True})
 
 
 @csrf_exempt

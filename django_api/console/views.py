@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from catalogue.push import send_order_status
 from catalogue.models import (
     Brand,
     Category,
@@ -91,6 +92,7 @@ def update_order_status(request, order_id):
     if status in dict(Order.STATUS_CHOICES):
         order.status = status
         order.save(update_fields=["status"])
+        send_order_status(order)
         messages.success(
             request,
             f"{order.order_number} marked {order.get_status_display().lower()}.",
