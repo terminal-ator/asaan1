@@ -469,7 +469,7 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
+  margin: 12px 0;
   padding: 12px 14px;
   border-radius: 16px;
   background: var(--success-soft);
