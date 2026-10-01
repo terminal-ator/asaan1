@@ -25,7 +25,7 @@
   transition: transform .12s, border-color .12s;
 }
 .new-product-row button:hover { border-color: #c7d2fe; transform: translateY(-1px); }
-.new-product-row span, .new-product-row small { display: block; color: var(--muted); font-size: 10.5px; }
+.new-product-row span, .new-product-row small { display: block; color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .new-product-row span { color: var(--brand-dark); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .new-product-row b {
   display: -webkit-box;
