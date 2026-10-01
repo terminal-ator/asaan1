@@ -120,7 +120,10 @@
       <section class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <div class="mb-5 flex items-start justify-between"><div><p class="text-xs font-semibold uppercase tracking-wide text-brand-600">Quick create</p><h2 class="text-xl font-bold text-slate-900" x-text="master === 'hsn' ? 'New HSN' : 'New ' + master"></h2></div><button type="button" @click="master=null" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100">&times;</button></div>
         <p x-show="masterError" x-text="masterError" class="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700"></p>
-        <label class="block"><span class="mb-1.5 block text-sm font-semibold text-slate-700" x-text="master === 'hsn' ? 'HSN code' : masterLabel"></span><input x-model="masterValue" required autofocus class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"></label>
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold text-slate-700" x-text="master === 'hsn' ? 'HSN code' : masterLabel"></span><input x-model="masterValue" autofocus class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"></label>
+        <!-- No `required` here: this modal is hidden inside the main form, and a hidden
+             invalid control silently blocks every product save ("not focusable"). The
+             Create button already refuses an empty value. -->
         <label x-show="master === 'hsn'" class="mt-4 block"><span class="mb-1.5 block text-sm font-semibold text-slate-700">Default GST rate (%)</span><input type="number" min="0" max="100" step="0.01" x-model="masterRate" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"></label>
         <div class="mt-6 flex justify-end gap-2"><button type="button" @click="master=null" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" @click="createMaster" :disabled="masterSaving || !masterValue.trim()" class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" x-text="masterSaving ? 'Creating…' : 'Create and select'"></button></div>
       </section>
