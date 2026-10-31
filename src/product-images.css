@@ -1,8 +1,8 @@
 .product-image {
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
-  border-radius: 14px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 12px;
   object-fit: cover;
   background: #efede7;
   border: 1px solid var(--line);

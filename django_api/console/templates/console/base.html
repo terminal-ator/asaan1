@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#33459e">
-<title>Asaan Console</title>
+<title>{% block title %}Asaan Console{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -36,9 +36,10 @@
   @media print{nav,.no-print{display:none!important}body{background:#fff!important}.slip-page{break-after:page;box-shadow:none!important;border:1px solid #d3cfc6!important}}
   @page{margin:12mm}
 </style>
+{% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-50 font-sans text-slate-900">
-<nav class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur">
+{% block nav %}<nav class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur">
   <div class="mx-auto flex max-w-7xl items-center gap-2 px-4 py-3 sm:px-6">
     <a href="{% url 'console-dashboard' %}" class="mr-2 flex shrink-0 items-center gap-2">
       <span class="grid h-8 w-8 place-items-center rounded-xl bg-brand-600 text-sm font-black text-white">A</span>
@@ -50,7 +51,9 @@
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/sales' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-sales-register' %}">Sales</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/dispatch-summary' in request.path or '/console/loadings' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-dispatch-summary' %}">Dispatch</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/products' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-products' %}">Products</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/bundles' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-bundles' %}">Bundles</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/deals' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-deals' %}">Deals</a>
+      <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/schemes' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-schemes' %}">Schemes</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/inventory' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-inventory' %}">Inventory</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/purchases' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-purchase-list' %}">Purchases</a>
       <a class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 {% if '/console/returns' in request.path %}bg-brand-50 text-brand-700{% endif %}" href="{% url 'console-returns' %}">Returns</a>
@@ -67,7 +70,7 @@
       </div>
     </div>
   </div>
-</nav>
+</nav>{% endblock %}
 {% if messages %}<div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6">{% for message in messages %}<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{{ message }}</div>{% endfor %}</div>{% endif %}
 {% block content %}{% endblock %}
 <script>async function asaanClearCache(){try{if("caches"in window){for(const key of await caches.keys())await caches.delete(key)}if("serviceWorker"in navigator){for(const registration of await navigator.serviceWorker.getRegistrations())await registration.unregister()}}finally{window.location.reload()}}</script>

@@ -81,6 +81,35 @@ class DailyDeal(models.Model):
         return f"{self.get_weekday_display()}: {self.product}"
 
 
+class Scheme(models.Model):
+    """A trade scheme shared by several SKUs, e.g. 3% off every Dia pack."""
+
+    name = models.CharField(max_length=150)
+    percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Taken off the pre-GST rate of every product in the scheme.",
+    )
+    products = models.ManyToManyField("Product", related_name="schemes", blank=True)
+    starts_on = models.DateField(null=True, blank=True)
+    ends_on = models.DateField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(percent__gte=0, percent__lte=100),
+                name="scheme_percent_range",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.percent}%)"
+
+
 class Loading(models.Model):
     STATUS_CHOICES = [
         ("open", "Open"),
@@ -102,7 +131,17 @@ class Loading(models.Model):
 
 
 class Shop(models.Model):
+    TYPE_CHOICES = [
+        ("kirana", "Kirana / general store"),
+        ("supermarket", "Supermarket"),
+        ("cosmetics", "Cosmetics / beauty store"),
+        ("pharmacy", "Pharmacy"),
+        ("restaurant", "Restaurant / café"),
+        ("other", "Other"),
+    ]
+
     store_name = models.CharField(max_length=200)
+    shop_type = models.CharField(max_length=30, choices=TYPE_CHOICES, blank=True)
     customer_name = models.CharField(max_length=150, blank=True)
     mobile = models.CharField(max_length=30)
     gstin = models.CharField(max_length=15, blank=True)
@@ -123,6 +162,41 @@ class Shop(models.Model):
 
     def __str__(self):
         return f"{self.store_name} ({self.mobile})"
+
+
+class ProductBundle(models.Model):
+    """Staff-curated starter products; customers review them before ordering."""
+
+    name = models.CharField(max_length=150)
+    shop_type = models.CharField(max_length=30, choices=Shop.TYPE_CHOICES)
+    description = models.CharField(max_length=300, blank=True)
+    active = models.BooleanField(default=True)
+    products = models.ManyToManyField("Product", through="ProductBundleItem")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["shop_type", "name", "pk"]
+
+    def __str__(self):
+        return self.name
+
+
+class ProductBundleItem(models.Model):
+    bundle = models.ForeignKey(ProductBundle, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey("Product", on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(
+        default=1, validators=[MinValueValidator(1), MaxValueValidator(100_000)]
+    )
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["bundle", "product"], name="unique_bundle_product"),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1, quantity__lte=100_000),
+                name="bundle_quantity_range",
+            ),
+        ]
 
 
 class Warehouse(models.Model):

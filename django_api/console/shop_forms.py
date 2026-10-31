@@ -26,6 +26,7 @@ class ShopForm(forms.ModelForm):
         model = Shop
         fields = [
             "store_name",
+            "shop_type",
             "customer_name",
             "mobile",
             "gstin",
@@ -65,4 +66,3 @@ class ShopForm(forms.ModelForm):
         if commit:
             shop.save()
         return shop
-

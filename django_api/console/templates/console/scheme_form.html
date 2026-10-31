@@ -1,0 +1,64 @@
+{% extends 'console/base.html' %}
+{% block content %}
+<main class="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+  <h1 class="mb-5 text-2xl font-extrabold">{% if scheme.pk %}Edit{% else %}Add{% endif %} scheme</h1>
+  <form method="post" novalidate x-data="schemeEditor('{{ initial_tab }}', {{ selected|length }})" class="rounded-2xl bg-white shadow-card ring-1 ring-slate-200">
+    {% csrf_token %}
+    <div class="flex gap-2 border-b border-slate-200 px-5" role="tablist" aria-label="Scheme sections">
+      <button type="button" role="tab" id="scheme-details-tab" aria-controls="scheme-details" :aria-selected="tab === 'details'" @click="tab = 'details'" :class="tab === 'details' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'" class="border-b-2 px-3 py-4 text-sm font-semibold">Details</button>
+      <button type="button" role="tab" id="scheme-products-tab" aria-controls="scheme-products" :aria-selected="tab === 'products'" @click="tab = 'products'" :class="tab === 'products' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'" class="border-b-2 px-3 py-4 text-sm font-semibold">Products <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600" x-text="count"></span></button>
+    </div>
+    <div class="p-5 sm:p-7">
+      {% if form.errors %}<div role="alert" class="mb-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">Check the highlighted fields in both tabs.{{ form.non_field_errors }}</div>{% endif %}
+      <section id="scheme-details" role="tabpanel" aria-labelledby="scheme-details-tab" x-show="tab === 'details'" class="grid gap-4 lg:grid-cols-2">
+        {% include 'console/_field.html' with field=form.name %}
+        {% include 'console/_field.html' with field=form.percent %}
+        {% include 'console/_field.html' with field=form.starts_on %}
+        {% include 'console/_field.html' with field=form.ends_on %}
+        <label class="flex items-center gap-3 text-sm font-semibold lg:col-span-2">{{ form.active }} Scheme is on</label>
+      </section>
+      <section id="scheme-products" role="tabpanel" aria-labelledby="scheme-products-tab" x-show="tab === 'products'" x-cloak>
+        <p class="mb-3 text-sm text-slate-500">Search a brand or name — e.g. "Dia" — then tick <b>Select shown</b> to add every match.</p>
+        {% for error in form.products.errors %}<p class="mb-3 text-sm font-medium text-rose-600">{{ error }}</p>{% endfor %}
+        <div class="mb-3 flex flex-col gap-2 sm:flex-row">
+          <input type="search" x-model="query" placeholder="Search product, brand, company, SKU" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+          <div class="flex gap-2">
+            <button type="button" @click="setShown(true)" class="whitespace-nowrap rounded-xl border border-brand-200 px-3 py-2 text-sm font-semibold text-brand-600">Select shown</button>
+            <button type="button" @click="setShown(false)" class="whitespace-nowrap rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600">Clear shown</button>
+          </div>
+        </div>
+        <div x-ref="list" class="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
+          {% for product in products %}
+          <label class="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-slate-50"
+                 data-search="{{ product.name|lower }} {{ product.simple_name|lower }} {{ product.brand.name|lower }} {{ product.company.name|lower }} {{ product.sku|lower }}"
+                 x-show="matches($el.dataset.search)">
+            <input type="checkbox" name="products" value="{{ product.pk }}" @change="recount()" {% if product.pk|stringformat:'s' in selected %}checked{% endif %} class="h-4 w-4 rounded border-slate-300 text-brand-600">
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-semibold">{{ product }}{% if not product.active %} <span class="font-normal text-amber-700">(archived)</span>{% endif %}</span>
+              <span class="block truncate text-xs text-slate-500">{{ product.brand }} · {{ product.packing }} · SKU {{ product.sku }}</span>
+            </span>
+          </label>
+          {% empty %}
+          <p class="p-6 text-center text-sm text-slate-500">No active products yet.</p>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+    <div class="sticky bottom-0 flex justify-end gap-3 rounded-b-2xl border-t border-slate-200 bg-white p-5">
+      <a href="{% url 'console-schemes' %}" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600">Cancel</a>
+      <button class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white">Save scheme</button>
+    </div>
+  </form>
+</main>
+<script>
+  function schemeEditor(initialTab, initialCount) {
+    return {
+      tab: initialTab || 'details', query: '', count: initialCount,
+      matches(text) { const words = this.query.toLowerCase().trim().split(/\s+/).filter(Boolean); return words.every(word => text.includes(word)); },
+      boxes() { return Array.from(this.$refs.list.querySelectorAll('input[type=checkbox]')); },
+      setShown(on) { this.boxes().forEach(box => { if (box.closest('label').style.display !== 'none') box.checked = on; }); this.recount(); },
+      recount() { this.count = this.boxes().filter(box => box.checked).length; }
+    };
+  }
+</script>
+{% endblock %}

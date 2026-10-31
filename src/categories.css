@@ -1,0 +1,82 @@
+/* Category-first browsing: a list of categories, each opening a bottom sheet. */
+.category-scroll { padding: 4px 16px calc(84px + env(safe-area-inset-bottom)); }
+.category-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.category-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  text-align: left;
+  color: var(--ink);
+}
+.category-row:active { background: var(--brand-soft); }
+.category-row.has-cart { border-color: var(--brand); }
+.category-thumbs { display: flex; gap: 4px; flex: 0 0 auto; }
+.category-thumb {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--brand-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+.category-copy { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.category-copy b { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-copy small { font-size: 12px; color: var(--muted); }
+.category-cart { color: var(--success); font-weight: 650; }
+.category-arrow { font-size: 24px; line-height: 1; color: var(--faint); }
+
+/* Above the catalogue, below the cart button (9) and the keypad (10). */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-end; justify-content: center; background: rgba(28, 27, 25, .45); }
+.category-sheet {
+  width: min(760px, 100%);
+  height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -12px 40px rgba(28, 27, 25, .28);
+  overflow: hidden;
+  animation: sheet-in .2s ease-out;
+}
+@keyframes sheet-in { from { transform: translateY(40px); opacity: .5; } to { transform: none; opacity: 1; } }
+.sheet-handle { align-self: center; width: 40px; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--line); }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 16px 10px; border-bottom: 1px solid var(--line); }
+.sheet-head b { display: block; font-size: 17px; font-weight: 750; }
+.sheet-head small { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); }
+/* contain: a swipe past the end must not scroll the page behind the sheet. */
+.sheet-list { flex: 1; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(84px + env(safe-area-inset-bottom)); background: #fff; }
+.cart-fab { z-index: 9; }
+
+/* Product without a photo: a tile in its brand's own colour. */
+.brand-tile {
+  display: grid;
+  place-items: center;
+  background: hsl(var(--tile-hue) 48% 91%);
+  color: hsl(var(--tile-hue) 45% 30%);
+  border: 1px solid hsl(var(--tile-hue) 40% 82%);
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+.product-photo .product-image.brand-tile { display: grid; font-size: 15px; }
+.keypad-image.brand-tile { font-size: 28px; }
+
+.category-sheet { transition: transform .18s ease-out; }
+.category-sheet.dragging { transition: none; }
+.sheet-grab { touch-action: none; cursor: grab; }
+.sheet-tools { display: grid; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.sheet-search { width: 100%; }
+.sheet-brands { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.sheet-brands::-webkit-scrollbar { display: none; }
+.sheet-brands .filter-pill { flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) { .category-sheet { animation: none; } }

@@ -781,12 +781,21 @@ def loading_detail(request, loading_id):
     )
 
 
+# Archived products stay in the database so orders, purchases and stock keep
+# their history; the list defaults to what shops can actually order.
+PRODUCT_STATUSES = {"active": {"active": True}, "archived": {"active": False}, "all": {}}
+
+
 @login_required
 def products(request):
     query = request.GET.get("q", "").strip()
     company = request.GET.get("company", "").strip()
     brand = request.GET.get("brand", "").strip()
-    items = Product.objects.select_related("company", "brand")
+    status = request.GET.get("status", "active")
+    if status not in PRODUCT_STATUSES:
+        status = "active"
+    scope = Product.objects.filter(**PRODUCT_STATUSES[status])
+    items = scope.select_related("company", "brand")
 
     if query:
         items = items.filter(
@@ -804,12 +813,12 @@ def products(request):
     # Filter choices mirror the PWA: brands follow the selected company, and
     # both lists only offer values the catalogue actually uses.
     companies = list(
-        Product.objects.order_by("company__name")
+        scope.order_by("company__name")
         .values_list("company__name", flat=True)
         .distinct()
     )
     brand_scope = (
-        Product.objects.filter(company__name=company) if company else Product.objects.all()
+        scope.filter(company__name=company) if company else scope
     )
     brands = list(
         brand_scope.order_by("brand__name").values_list("brand__name", flat=True).distinct()
@@ -824,6 +833,12 @@ def products(request):
             "query": query,
             "company": company,
             "brand": brand,
+            "status": status,
+            "status_labels": [("active", "Active"), ("archived", "Archived"), ("all", "All")],
+            "status_counts": {
+                key: Product.objects.filter(**lookup).count()
+                for key, lookup in PRODUCT_STATUSES.items()
+            },
             "companies": companies,
             "brands": brands,
         },

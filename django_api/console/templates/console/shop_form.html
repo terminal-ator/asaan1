@@ -3,10 +3,17 @@
 {% block content %}
 <main class="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:py-8">
   <div class="mb-6"><p class="text-xs font-bold uppercase tracking-wider text-brand-600">Customers</p><h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">{% if shop %}Edit{% else %}Add{% endif %} shop</h1><p class="mt-1 text-sm text-slate-500">Keep delivery and GST information ready for invoicing.</p></div>
-  <form class="space-y-5 rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-200/80 sm:p-7" method="post">
+  <form novalidate x-data="{tab: 'details'}" class="space-y-5 rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-200/80 sm:p-7" method="post">
     {% csrf_token %}
+    <div class="flex gap-2 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Shop sections">
+      <button type="button" role="tab" :aria-selected="tab === 'details'" @click="tab = 'details'" :class="tab === 'details' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'" class="whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold">Shop details</button>
+      <button type="button" role="tab" :aria-selected="tab === 'delivery'" @click="tab = 'delivery'" :class="tab === 'delivery' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'" class="whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold">Delivery & reminders</button>
+      <button type="button" role="tab" :aria-selected="tab === 'tax'" @click="tab = 'tax'" :class="tab === 'tax' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500'" class="whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold">Tax</button>
+    </div>
+    {% if form.errors %}<div role="alert" class="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">Check the highlighted fields in each tab.{{ form.non_field_errors }}</div>{% endif %}
     <div class="grid gap-4 lg:grid-cols-2">
       {% for field in form %}
+      <div {% if field.name == 'address' or field.name == 'order_days' %}class="lg:col-span-2"{% endif %} x-show="tab === '{% if field.name == 'gstin' %}tax{% elif field.name == 'address' or field.name == 'state' or field.name == 'order_days' or field.name == 'latitude' or field.name == 'longitude' or field.name == 'location_accuracy' %}delivery{% else %}details{% endif %}'">
       {% if field.name == 'active' %}
       <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">{{ field }}<span>{{ field.label }}</span></label>
       {% elif field.name == 'order_days' %}
@@ -19,9 +26,10 @@
       {% else %}
       <label class="block {% if field.name == 'address' %}lg:col-span-2{% endif %}"><span class="mb-1.5 block text-sm font-semibold text-slate-700">{{ field.label }}{% if field.field.required %}<span class="text-rose-500"> *</span>{% endif %}</span>{{ field }}{% for error in field.errors %}<span class="mt-1 block text-xs text-rose-600">{{ error }}</span>{% endfor %}</label>
       {% endif %}
+      </div>
       {% endfor %}
     </div>
-    <div class="flex justify-end gap-3 border-t border-slate-100 pt-5"><a class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100" href="{% url 'console-shops' %}">Cancel</a><button class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Save shop</button></div>
+    <div class="sticky bottom-0 flex justify-end gap-3 bg-white border-t border-slate-100 pt-5"><a class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100" href="{% url 'console-shops' %}">Cancel</a><button class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Save shop</button></div>
   </form>
 </main>
 {% endblock %}

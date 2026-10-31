@@ -1,4 +1,4 @@
-.cart-fab { width: min(calc(100% - 32px), 728px); min-height: 60px; justify-content: flex-start; padding: 10px 13px; border-radius: 18px; }
+.cart-fab { width: min(calc(100% - 32px), 728px); min-height: 52px; justify-content: flex-start; padding: 7px 13px; border-radius: 18px; }
 .cart-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, .14); }
 .cart-icon svg { width: 21px; height: 21px; }
 .cart-copy { display: grid; flex: 1; gap: 2px; text-align: left; }

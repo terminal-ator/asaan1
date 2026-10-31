@@ -2,7 +2,7 @@
 
 Retailer ordering PWA plus a distributor console.
 
-- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue, like products for a personal shortlist (the **Liked** filter), reorder in one tap (the **Order again** card and the **Usual** shelf built from their own history), see live **order status**, share an order on WhatsApp, shuffle a random **Discover** shelf, and submit orders that queue locally until the API is reachable.
+- **PWA (repository root)** — mobile-first, installable, works offline. Shops set up their details once, browse the catalogue by category (each opens a bottom sheet of its products), review selected products with the **In cart** pill and highlighted rows, like products for a personal shortlist (the **Liked** filter), reorder in one tap (the **Order again** shortcut and the **Usual** list built from their own history), see live **order status**, share an order on WhatsApp, shuffle a random **Discover** list, and submit orders that queue locally until the API is reachable.
 - **API and console (`django_api/`)** — Django serves the catalogue and receives orders, and provides the staff console for reviewing orders, printing slips, grouping dispatch loadings, managing products and shops, purchases, returns, inventory, and GST reports.
 
 ## Current billing workflow
@@ -42,6 +42,49 @@ Vite serves the PWA on `http://localhost:5173` and proxies `/api` and `/media` t
 
 Set `VITE_API_URL` only when the PWA and API are on different origins.
 
+## Recommended bundles
+
+Staff configure shop-specific starter bundles at **Console → Bundles**
+(`/console/bundles`). Choose a shop type, select catalogue products and suggested
+quantities, and mark the bundle active. Bundles must contain at least one product;
+inactive products and empty bundles are excluded from the PWA.
+
+Shop setup has **Shop details** and **Recommended bundles** tabs. Users can choose
+multiple bundles for their shop type or skip them. Their choices feed the
+**Recommended** catalogue pill, which shows each product once and supports the
+usual search and filters. Users add products to their cart as they browse.
+Selections and bundle data are saved on the device for offline use. Existing users
+can update them through **Menu → Shop details & bundles**.
+
+Run `cd django_api && .venv/bin/python manage.py migrate` when deploying this
+change, then rebuild the PWA. Bundles are curated by staff; none are prefilled.
+
+## Adding products
+
+**Products → Quick add** (`/console/products/quick-add`) puts one product on one screen. **Save & add another** comes back with the company, brand, category, HSN and unit already chosen. SKU is optional (one is generated from the name, but prefer the Marg item code), and GST defaults from the HSN. The full tabbed form is still under **Full form**.
+
+The products list shows **Active** products by default, with **Archived** and **All** tabs.
+
+To restart the catalogue from best sellers only, archive everything and then add or restore products one by one:
+
+```sh
+python manage.py archive_products        # reports how many would be archived
+python manage.py archive_products --yes  # hides them all from the shop app
+```
+
+Nothing is deleted: order history keeps its copies, and **Quick add → Bring back an archived product** restores a product with its SKU, rates and photo. When the PWA syncs, shops' carts drop archived items and reprice the rest.
+
+## Staff phone app
+
+**Asaan Products** (`/console/app/`, or **Products → Phone app**) is an installable app for staff to add and edit products from a phone. Open it in Chrome or Safari and choose *Install app* / *Add to Home Screen*.
+
+- **Live / Need photo / Archived** lists with search. Tap a product to edit it; tap the camera on a row to photograph it straight away. In *Need photo*, the next product's camera is one tap away after each save.
+- **+** adds a product. Company, brand, category and HSN are picked from recent chips or a searchable list (new ones can be added there). Units and GST rates are chips. The rate can be typed before or including GST, and the app remembers which you prefer.
+- **Save & add similar** saves and opens a copy with everything but the SKU and photo, for pack-size variants.
+- While typing a new name, matching archived products are offered for restore.
+
+It needs the internet: its service worker only shows an offline notice, it never caches product data.
+
 ## Product photos
 
 Adding a photo is built for a phone: open a product's **Media** tab — or use the **Photo** shortcut in the products list — and tap **Take photo** to open the camera directly, or **Choose from gallery**. The picture is resized on the device before upload (max 1400 px, JPEG), so it saves quickly on mobile data, and the products list shows a thumbnail for each item. Django serves `/media/` while `DEBUG` is on; Caddy serves it in production.
@@ -50,7 +93,11 @@ Adding a photo is built for a phone: open a product's **Media** tab — or use t
 
 Products and Customers each have a **Bulk edit** sheet (`/console/products/bulk`, `/console/shops/bulk`) for updating many rows at once: rates and MRP in rupees, GST %, scheme %, availability, and shop contact/GST details. Each sheet is paginated at 100 rows, filtered by the same search as the list pages, saves all rows together, shows inline errors, flags unsaved changes before leaving, and supports Enter-to-move-down plus Ctrl/⌘+S to save.
 
-A product's **scheme %** is a trade scheme shown to shops as a badge in the PWA and printed on order slips, packing slips and the items CSV; the Marg bill remains the final word on whether it applies. Set it on the product form, in the bulk sheet, or with the optional `scheme_percent` import column.
+## Schemes
+
+A trade scheme takes a percentage off the pre-GST rate. Set one on a single product (**scheme %** on the product form, the bulk sheet, or the optional `scheme_percent` import column), or create a group scheme at **Console → Schemes** (`/console/schemes`) — e.g. "Dia, 3%" — and tick every SKU it covers; search a brand and use **Select shown** to add them all. Group schemes can have start and end dates.
+
+Schemes do not stack: each product gets the single best scheme running today. The API recomputes it when an order arrives, stores it on the order line, and takes it off the line's taxable value, so order totals, slips, the items CSV and the GST report are all net of scheme. The PWA shows the scheme on each product, takes it off the cart lines and shows the saving. Orders placed before this change kept the full rate in their totals. Daily-deal percentages are still shown only, not applied.
 
 ## Endpoints
 
@@ -68,7 +115,7 @@ Order updates: shops tap **Get order updates** on the Orders screen to allow not
 
 - **Order days** — each shop picks weekdays on its console form (Mon–Sun chips). A cron runs the reminder each morning:
   `python manage.py send_order_day_reminders` at 08:30 pushes “Today is your order day” to the shops scheduled for today.
-- **Daily deals** — Console → **Deals** assigns one product and an extra trade scheme % to each weekday. The app shows a *Today's deal* card, a deal chip on the product, and a “Deals this week” shelf; `python manage.py send_daily_deal` at 09:00 pushes the day's deal to every subscribed device.
+- **Daily deals** — Console → **Deals** assigns one product and an extra trade scheme % to each weekday. The app shows a *Today* deal chip on the product and a **Deals** pill for the weekly list; `python manage.py send_daily_deal` at 09:00 pushes the day's deal to every subscribed device.
 - Both commands are safe to run by hand, and the console dashboard has **Order-day reminders** and **Today's deal** buttons that fire them immediately.
 - On the server, `/etc/cron.d/asaan-notifications` runs them at 08:30 and 09:00 and appends to `/var/lib/asaan/notifications.log`.
 

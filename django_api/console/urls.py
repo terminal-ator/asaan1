@@ -1,10 +1,21 @@
 from django.urls import path
 
 from . import views
+from . import product_media
+from . import quick_add
+from . import staff_app
+from . import bundle_views
+from . import scheme_views
 
 
 urlpatterns = [
+    path("bundles", bundle_views.bundles, name="console-bundles"),
+    path("bundles/new", bundle_views.bundle_edit, name="console-bundle-create"),
+    path("bundles/<int:bundle_id>", bundle_views.bundle_edit, name="console-bundle-edit"),
     path("", views.dashboard, name="console-dashboard"),
+    path("schemes", scheme_views.schemes, name="console-schemes"),
+    path("schemes/new", scheme_views.scheme_edit, name="console-scheme-create"),
+    path("schemes/<int:scheme_id>", scheme_views.scheme_edit, name="console-scheme-edit"),
     path("deals", views.deals, name="console-deals"),
     path("deals/send", views.send_deal, name="console-send-deal"),
     path("reminders/send", views.send_reminders, name="console-send-reminders"),
@@ -66,6 +77,16 @@ urlpatterns = [
         name="console-loading-packing-slips",
     ),
     path("products", views.products, name="console-products"),
+    path("app/", staff_app.app, name="console-staff-app"),
+    path("app/manifest.webmanifest", staff_app.manifest, name="console-staff-manifest"),
+    path("app/sw.js", staff_app.service_worker, name="console-staff-sw"),
+    path("app/products", staff_app.create_product, name="console-staff-create"),
+    path("products/quick-add", quick_add.product_quick_add, name="console-product-quick-add"),
+    path("products/<uuid:product_id>/restore", quick_add.product_restore, name="console-product-restore"),
+    path("products/images", product_media.workspace, name="console-product-images"),
+    path("products/images/data", product_media.product_list, name="console-product-images-data"),
+    path("products/<uuid:product_id>/image", product_media.update_image, name="console-product-image-update"),
+    path("products/<uuid:product_id>/quick-edit", product_media.update_product, name="console-product-quick-edit"),
     path("inventory", views.inventory, name="console-inventory"),
     path("purchases", views.purchases, name="console-purchase-list"),
     path("masters/suppliers/quick-create", views.quick_create_supplier, name="console-quick-supplier"),

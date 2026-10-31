@@ -1,0 +1,342 @@
+{% extends 'console/base.html' %}
+{% load static %}
+
+{% block title %}Asaan Products{% endblock %}
+
+{% block head %}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Products">
+<link rel="manifest" href="{% url 'console-staff-manifest' %}">
+<link rel="icon" href="{% static 'console/staff-icon.svg' %}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{% static 'console/staff-icon.svg' %}">
+<style>
+  .brand-tile{background:hsl(var(--tile-hue) 48% 91%);color:hsl(var(--tile-hue) 45% 30%);border:1px solid hsl(var(--tile-hue) 40% 82%)}
+  .safe-bottom{padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .no-scrollbar{scrollbar-width:none}.no-scrollbar::-webkit-scrollbar{display:none}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+</style>
+{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div x-data="staffApp({
+        csrf: '{{ csrf_token }}',
+        listUrl: '{% url 'console-product-images-data' %}',
+        createUrl: '{% url 'console-staff-create' %}',
+        updateUrl: '{% url 'console-product-quick-edit' '00000000-0000-0000-0000-000000000000' %}'.replace('00000000-0000-0000-0000-000000000000', '__id__'),
+        imageUrl: '{% url 'console-product-image-update' '00000000-0000-0000-0000-000000000000' %}'.replace('00000000-0000-0000-0000-000000000000', '__id__'),
+        lookupUrl: '{% url 'console-quick-lookup' %}',
+        swUrl: '{% url 'console-staff-sw' %}',
+        scope: '/console/app/'
+     })"
+     class="mx-auto min-h-screen max-w-xl bg-slate-50 pb-28">
+
+  <!-- Header: search and tabs stay in reach while scrolling. -->
+  <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 pb-2 pt-[max(12px,env(safe-area-inset-top))] backdrop-blur">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <img src="{% static 'console/staff-icon.svg' %}" alt="" class="h-8 w-8 rounded-xl">
+        <div>
+          <h1 class="text-lg font-extrabold leading-tight">Products</h1>
+          <p class="text-xs text-slate-500" x-text="loading && !products.length ? 'Loading…' : `${total} ${tab === 'archived' ? 'archived' : tab === 'photos' ? 'without a photo' : 'live in the shop app'}`"></p>
+        </div>
+      </div>
+      <a href="{% url 'console-products' %}" class="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Console</a>
+    </div>
+    <input type="search" x-model="query" enterkeyhint="search" placeholder="Search name, brand, SKU"
+           class="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-base outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-100">
+    <nav class="mt-2 flex gap-1" aria-label="Product lists">
+      <template x-for="option in [['active', 'Live'], ['photos', 'Need photo'], ['archived', 'Archived']]" :key="option[0]">
+        <button type="button" @click="tab = option[0]" :aria-pressed="tab === option[0]"
+                :class="tab === option[0] ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'"
+                class="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold" x-text="option[1]"></button>
+      </template>
+    </nav>
+  </header>
+
+  <div x-show="signedOut" x-cloak class="m-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">
+    Your session ended. <a class="font-bold underline" href="{% url 'admin:login' %}?next=/console/app/">Sign in again</a>, then come back.
+  </div>
+  <p x-show="listError" x-cloak class="m-4 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700" x-text="listError"></p>
+
+  <!-- Product list -->
+  <ul class="divide-y divide-slate-200 bg-white">
+    <template x-for="product in products" :key="product.id">
+      <li class="flex items-center gap-3 px-4 py-3 active:bg-slate-50">
+        <button type="button" class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="openEditor('edit', product)">
+          <span class="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl text-base font-extrabold"
+                :class="product.imageUrl ? 'bg-slate-100' : 'brand-tile'" :style="product.imageUrl ? '' : tileStyle(product.brand)">
+            <template x-if="product.imageUrl"><img :src="product.imageUrl" alt="" loading="lazy" class="h-full w-full object-cover"></template>
+            <template x-if="!product.imageUrl"><span x-text="initials(product.brand)"></span></template>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block font-semibold leading-snug" x-text="product.simpleName || product.name"></span>
+            <span class="mt-0.5 block text-xs text-slate-500" x-text="`${product.brand} · ${product.packing} · ${product.unit}`"></span>
+            <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <b x-text="money(inclusive(product.attributes))"></b>
+              <span class="text-xs text-slate-400" x-show="Number(product.attributes.mrp)" x-text="`MRP ${money(product.attributes.mrp)}`"></span>
+              <span x-show="product.regular" class="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">Regular</span>
+            </span>
+          </span>
+        </button>
+        <template x-if="tab === 'archived'">
+          <button type="button" @click="restore(product)" class="h-11 shrink-0 rounded-xl border border-brand-200 px-3 text-sm font-semibold text-brand-600">Restore</button>
+        </template>
+        <template x-if="tab !== 'archived'">
+          <button type="button" @click="quickPhoto(product)" :aria-label="`Take photo of ${product.simpleName || product.name}`"
+                  class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-600 active:bg-brand-50">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </button>
+        </template>
+      </li>
+    </template>
+  </ul>
+  <p x-show="!loading && !products.length && !listError" x-cloak class="px-6 py-12 text-center text-sm text-slate-500"
+     x-text="query ? 'Nothing matches that search.' : tab === 'photos' ? 'Every live product has a photo.' : tab === 'archived' ? 'Nothing archived.' : 'No live products yet. Tap + to add one, or restore from Archived.'"></p>
+  <div x-ref="more" class="py-6 text-center text-xs text-slate-400" x-text="loading && products.length ? 'Loading more…' : ''"></div>
+  <input type="file" accept="image/*" capture="environment" class="hidden" x-ref="quickPhoto" @change="onQuickPhoto($event)">
+
+  <button type="button" @click="openEditor('new')" aria-label="Add product"
+          style="right: max(20px, calc(50% - 18rem + 20px)); bottom: max(20px, env(safe-area-inset-bottom));" class="fixed z-20 grid h-16 w-16 place-items-center rounded-2xl bg-brand-600 text-4xl font-light text-white shadow-xl active:bg-brand-700">+</button>
+
+  <!-- Toast -->
+  <div x-show="toast" x-cloak x-transition.opacity class="fixed inset-x-4 bottom-28 z-40 mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl">
+    <span class="flex-1" x-text="toast && toast.message"></span>
+    <template x-if="toast && toast.action">
+      <button type="button" class="shrink-0 rounded-lg bg-white/15 px-3 py-2 font-semibold" @click="runToastAction()" x-text="toast.action.label"></button>
+    </template>
+  </div>
+
+  <!-- Editor: full screen on a phone, a panel on larger screens. -->
+  <template x-if="editor">
+    <div class="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-6" @keydown.escape.window="picker ? picker = null : closeEditor()">
+      <section class="flex h-[100dvh] w-full max-w-xl flex-col bg-white sm:h-[90vh] sm:rounded-3xl sm:shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+        <div class="flex items-center gap-2 border-b border-slate-200 px-3 pb-2 pt-[max(10px,env(safe-area-inset-top))]">
+          <button type="button" @click="closeEditor()" class="h-11 rounded-xl px-3 text-sm font-semibold text-slate-600">Cancel</button>
+          <div class="min-w-0 flex-1 text-center">
+            <h2 id="editor-title" class="truncate text-base font-bold" x-text="editor.mode === 'new' ? 'New product' : 'Edit product'"></h2>
+            <p x-show="editor.copiedFrom" class="truncate text-xs text-slate-500" x-text="`Copied from ${editor.copiedFrom}`"></p>
+          </div>
+          <button type="button" @click="save()" :disabled="editor.saving" class="h-11 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white disabled:opacity-60" x-text="editor.saving ? 'Saving…' : 'Save'"></button>
+        </div>
+
+        <div class="flex gap-1 px-3 pt-2" role="tablist" aria-label="Product sections">
+          <template x-for="option in [['details', 'Details'], ['price', 'Price'], ['photo', 'Photo']]" :key="option[0]">
+            <button type="button" role="tab" :aria-selected="editor.tab === option[0]" @click="editor.tab = option[0]"
+                    :class="editor.tab === option[0] ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'"
+                    class="flex-1 border-b-2 px-2 py-3 text-sm font-semibold">
+              <span x-text="option[1]"></span>
+              <span x-show="Object.keys(editor.errors).some(field => (option[0] === 'details' ? ['name','simple_name','company_name','brand_name','category_name','packing','unit'] : option[0] === 'price' ? ['rate','mrp','hsn','gst_rate','scheme_percent','sku'] : ['image']).includes(field))"
+                    class="ml-1 inline-block h-2 w-2 rounded-full bg-rose-500" aria-label="has errors"></span>
+            </button>
+          </template>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-4 pb-6 pt-4">
+          <div x-show="editor.error" class="mb-4 rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">
+            <p x-text="editor.error"></p>
+            <template x-if="editor.archived">
+              <button type="button" class="mt-2 rounded-lg bg-white px-3 py-2 font-semibold text-brand-700 ring-1 ring-brand-200" @click="restore(editor.archived, true)">Restore the archived product</button>
+            </template>
+          </div>
+
+          <!-- Details -->
+          <section x-show="editor.tab === 'details'" class="space-y-5">
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">Name <span class="font-normal text-slate-400">as in Marg</span></span>
+              <textarea id="editor-name" rows="2" x-model="editor.form.name" @input="findArchived()" enterkeyhint="next" autocapitalize="words"
+                        class="w-full resize-none rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"></textarea>
+              <span x-show="fieldError('name')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('name')"></span>
+            </label>
+            <template x-if="archiveMatches.length">
+              <div class="rounded-2xl bg-amber-50 p-3">
+                <p class="text-xs font-semibold text-amber-800">Already in the archive — restore instead of typing it again:</p>
+                <template x-for="match in archiveMatches" :key="match.id">
+                  <div class="mt-2 flex items-center gap-2">
+                    <span class="min-w-0 flex-1 text-sm" x-text="`${match.simpleName || match.name} · ${match.packing}`"></span>
+                    <button type="button" class="h-10 shrink-0 rounded-lg bg-white px-3 text-sm font-semibold text-brand-700 ring-1 ring-brand-200" @click="restore(match, true)">Restore</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">Name shops see <span class="font-normal text-slate-400">optional</span></span>
+              <input x-model="editor.form.simple_name" enterkeyhint="next" autocapitalize="words" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('simple_name')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('simple_name')"></span>
+            </label>
+
+            <template x-for="master in [['company_name', 'Company'], ['brand_name', 'Brand'], ['category_name', 'Category']]" :key="master[0]">
+              <div>
+                <span class="mb-1.5 block text-sm font-semibold" x-text="master[1]"></span>
+                <button type="button" @click="openPicker(master[0], master[1])"
+                        :class="fieldError(master[0]) ? 'border-rose-400' : 'border-slate-300'"
+                        class="flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-base">
+                  <span :class="editor.form[master[0]] ? '' : 'text-slate-400'" x-text="lookupLabel(master[0], editor.form[master[0]]) || `Choose ${master[1].toLowerCase()}`"></span>
+                  <span class="text-slate-400" aria-hidden="true">›</span>
+                </button>
+                <div class="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
+                  <template x-for="chip in recentChips(master[0])" :key="chip.id">
+                    <button type="button" @click="choose(master[0], chip.id)"
+                            :class="String(editor.form[master[0]]) === String(chip.id) ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'"
+                            class="h-10 shrink-0 rounded-full px-4 text-sm font-semibold" x-text="chip.label"></button>
+                  </template>
+                </div>
+                <span x-show="fieldError(master[0])" class="mt-1 block text-sm text-rose-600" x-text="fieldError(master[0])"></span>
+              </div>
+            </template>
+
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">Packing</span>
+              <input x-model="editor.form.packing" placeholder="e.g. Case of 24 × 100g" enterkeyhint="done" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('packing')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('packing')"></span>
+            </label>
+            <div>
+              <span class="mb-1.5 block text-sm font-semibold">Sold per</span>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="unit in units" :key="unit">
+                  <button type="button" @click="editor.form.unit = unit"
+                          :class="editor.form.unit === unit ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'"
+                          class="h-11 rounded-full px-5 text-sm font-semibold" x-text="unit"></button>
+                </template>
+              </div>
+              <span x-show="fieldError('unit')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('unit')"></span>
+            </div>
+          </section>
+
+          <!-- Price -->
+          <section x-show="editor.tab === 'price'" x-cloak class="space-y-5">
+            <div>
+              <div class="mb-1.5 flex items-center justify-between gap-2">
+                <span class="text-sm font-semibold" x-text="editor.includesGst ? 'Rate shops pay (₹, incl. GST)' : 'Sale rate (₹, before GST)'"></span>
+                <button type="button" @click="toggleIncludesGst()" class="rounded-lg px-2 py-1 text-xs font-semibold text-brand-600" x-text="editor.includesGst ? 'Enter before GST' : 'Enter incl. GST'"></button>
+              </div>
+              <input type="text" inputmode="decimal" x-model="editor.rateText" @input="editor.rateTouched = true; syncRate()" placeholder="0.00"
+                     class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('rate')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('rate')"></span>
+            </div>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">MRP (₹)</span>
+              <input type="text" inputmode="decimal" x-model="editor.form.mrp" placeholder="0.00"
+                     class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('mrp')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('mrp')"></span>
+            </label>
+            <div>
+              <span class="mb-1.5 block text-sm font-semibold">GST %</span>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="rate in gstRates" :key="rate">
+                  <button type="button" @click="editor.form.gst_rate = rate; syncRate()"
+                          :class="Number(editor.form.gst_rate) === Number(rate) && editor.form.gst_rate !== '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'"
+                          class="h-11 min-w-[56px] rounded-full px-4 text-sm font-semibold" x-text="`${rate}%`"></button>
+                </template>
+              </div>
+              <span x-show="fieldError('gst_rate')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('gst_rate')"></span>
+            </div>
+            <p x-show="priceSummary()" class="rounded-2xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800" x-text="priceSummary()"></p>
+            <div>
+              <span class="mb-1.5 block text-sm font-semibold">HSN <span class="font-normal text-slate-400">sets GST</span></span>
+              <button type="button" @click="openPicker('hsn', 'HSN')" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 px-4 py-3 text-left text-base">
+                <span :class="editor.form.hsn ? '' : 'text-slate-400'" x-text="lookupLabel('hsn', editor.form.hsn) || 'Choose HSN'"></span>
+                <span class="text-slate-400" aria-hidden="true">›</span>
+              </button>
+              <div class="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
+                <template x-for="chip in recentChips('hsn')" :key="chip.id">
+                  <button type="button" @click="choose('hsn', chip.id)" :class="String(editor.form.hsn) === String(chip.id) ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'" class="h-10 shrink-0 rounded-full px-4 text-sm font-semibold" x-text="chip.label"></button>
+                </template>
+              </div>
+            </div>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">Own scheme % <span class="font-normal text-slate-400">group schemes are under Schemes</span></span>
+              <input type="text" inputmode="decimal" x-model="editor.form.scheme_percent" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('scheme_percent')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('scheme_percent')"></span>
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">SKU <span class="font-normal text-slate-400" x-text="editor.mode === 'new' ? 'Marg item code; made from the name if blank' : ''"></span></span>
+              <input x-model="editor.form.sku" autocapitalize="characters" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base uppercase outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('sku')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('sku')"></span>
+            </label>
+            <div class="grid gap-2">
+              <label class="flex min-h-[52px] items-center justify-between rounded-2xl border border-slate-200 px-4 text-sm font-semibold">
+                Regular (best seller)
+                <input type="checkbox" x-model="editor.form.regular" class="h-6 w-6 rounded border-slate-300 text-brand-600">
+              </label>
+              <template x-if="editor.mode === 'edit'">
+                <label class="flex min-h-[52px] items-center justify-between rounded-2xl border border-slate-200 px-4 text-sm font-semibold">
+                  Live in the shop app
+                  <input type="checkbox" x-model="editor.form.active" class="h-6 w-6 rounded border-slate-300 text-brand-600">
+                </label>
+              </template>
+            </div>
+          </section>
+
+          <!-- Photo -->
+          <section x-show="editor.tab === 'photo'" x-cloak class="space-y-4">
+            <div class="grid aspect-square w-full place-items-center overflow-hidden rounded-3xl bg-slate-100">
+              <template x-if="currentPhoto()"><img :src="currentPhoto()" alt="Product photo" class="h-full w-full object-contain"></template>
+              <template x-if="!currentPhoto()"><span class="text-sm text-slate-400">No photo yet</span></template>
+            </div>
+            <p x-show="editor.photo.busy" class="text-sm font-semibold text-brand-600">Optimising photo…</p>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" @click="pickPhoto(true)" class="h-14 rounded-2xl bg-brand-600 text-base font-bold text-white">Take photo</button>
+              <button type="button" @click="pickPhoto(false)" class="h-14 rounded-2xl border border-slate-300 text-base font-semibold text-slate-700">Gallery</button>
+            </div>
+            <button type="button" x-show="currentPhoto()" @click="editor.photo.file = null; editor.photo.preview = ''; editor.photo.remove = true"
+                    class="w-full rounded-2xl py-3 text-sm font-semibold text-rose-600">Remove photo</button>
+            <span x-show="fieldError('image')" class="block text-sm text-rose-600" x-text="fieldError('image')"></span>
+            <input type="file" accept="image/*" class="hidden" x-ref="editorPhoto" @change="onEditorPhoto($event)">
+          </section>
+        </div>
+
+        <div class="safe-bottom grid grid-cols-2 gap-2 border-t border-slate-200 px-4 pt-3">
+          <template x-if="editor.mode === 'new'">
+            <button type="button" @click="save(true)" :disabled="editor.saving" class="h-12 rounded-2xl border border-brand-200 text-sm font-bold text-brand-700 disabled:opacity-60">Save &amp; add similar</button>
+          </template>
+          <template x-if="editor.mode === 'edit'">
+            <button type="button" @click="duplicate()" :disabled="editor.saving" class="h-12 rounded-2xl border border-brand-200 text-sm font-bold text-brand-700 disabled:opacity-60">Duplicate</button>
+          </template>
+          <button type="button" @click="save()" :disabled="editor.saving" class="h-12 rounded-2xl bg-brand-600 text-sm font-bold text-white disabled:opacity-60" x-text="editor.saving ? 'Saving…' : 'Save'"></button>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Picker for company, brand, category and HSN -->
+  <template x-if="picker">
+    <div class="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-6" @click.self="picker = null">
+      <section class="flex h-[85dvh] w-full max-w-xl flex-col rounded-t-3xl bg-white sm:h-[80vh] sm:rounded-3xl" role="dialog" aria-modal="true" :aria-label="`Choose ${picker.label}`">
+        <div class="flex items-center gap-2 px-4 pt-4">
+          <input id="picker-search" type="search" x-model="picker.query" :placeholder="`Search or add ${picker.label.toLowerCase()}`" enterkeyhint="done"
+                 @keydown.enter.prevent="pickerItems().length === 1 ? pick(pickerItems()[0].id) : null"
+                 class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+          <button type="button" @click="picker = null" class="h-11 rounded-xl px-3 text-sm font-semibold text-slate-600">Close</button>
+        </div>
+        <p x-show="picker.error" class="mx-4 mt-2 rounded-xl bg-rose-50 p-2 text-sm text-rose-700" x-text="picker.error"></p>
+        <div class="flex-1 overflow-y-auto px-2 pb-4 pt-2">
+          <template x-for="item in pickerItems()" :key="item.id">
+            <button type="button" @click="pick(item.id)" class="flex min-h-[52px] w-full items-center rounded-xl px-4 text-left text-base active:bg-brand-50"
+                    :class="editor && String(editor.form[picker.field]) === item.id ? 'font-bold text-brand-700' : ''" x-text="item.label"></button>
+          </template>
+          <template x-if="picker.query.trim() && !pickerItems().some(item => item.label.toLowerCase() === picker.query.trim().toLowerCase())">
+            <div class="mx-2 mt-3 rounded-2xl border border-dashed border-brand-200 p-3">
+              <div x-show="picker.field === 'hsn'" class="mb-2 flex flex-wrap items-center gap-2 text-sm">
+                <span class="font-semibold text-brand-800">Default GST</span>
+                <template x-for="rate in gstRates" :key="rate">
+                  <button type="button" @click="picker.gst = rate" :class="picker.gst === rate ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'" class="h-9 rounded-full px-3 text-sm font-semibold" x-text="`${rate}%`"></button>
+                </template>
+              </div>
+              <button type="button" @click="createMaster()" :disabled="picker.creating" class="w-full rounded-xl px-4 py-3 text-left text-sm font-bold disabled:opacity-60" :class="pickerItems().length ? 'bg-white text-brand-700 ring-1 ring-brand-200' : 'bg-brand-600 text-white'"
+                      x-text="picker.creating ? 'Adding…' : `+ Not listed? Add “${picker.query.trim()}” as a new ${picker.label.toLowerCase()}`"></button>
+            </div>
+          </template>
+          <p x-show="!pickerItems().length && !picker.query.trim()" class="p-6 text-center text-sm text-slate-500">Nothing here yet. Type a name to add one.</p>
+        </div>
+      </section>
+    </div>
+  </template>
+</div>
+
+<script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
+<script src="{% static 'console/staff-app.js' %}?v=5"></script>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends 'console/base.html' %}
+{% load static %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'console/product-images.css' %}?v=2">
+<main class="image-workspace" id="image-workspace"
+      data-list-url="{% url 'console-product-images-data' %}"
+      data-update-url="{% url 'console-product-quick-edit' '00000000-0000-0000-0000-000000000000' %}">
+  {% csrf_token %}
+  <header class="iw-heading">
+    <div><p class="iw-eyebrow">Catalogue / Workspace</p><h1>Product workspace</h1><p>Edit names, prices and photos, then move to the next product.</p></div>
+    <a class="iw-button" href="{% url 'console-products' %}">Back to products</a>
+  </header>
+
+  <div class="iw-toolbar">
+    <label class="iw-search"><span aria-hidden="true">⌕</span><input type="search" id="iw-search" placeholder="Search name, SKU, company, brand, packing…" aria-label="Search products" autocomplete="off"><kbd>/</kbd></label>
+    <button type="button" class="iw-button iw-filter-toggle" id="iw-filter-toggle" aria-expanded="false" aria-controls="iw-filters">Filters <span id="iw-filter-count"></span></button>
+    <label class="iw-sort"><span>Sort by</span><select id="iw-sort" aria-label="Sort products"><option value="company">Company &amp; brand</option><option value="name">Product name</option><option value="sku">SKU</option><option value="updated">Recently updated</option><option value="newest">Newest products</option></select></label>
+    <button type="button" class="iw-button" id="iw-refresh">Refresh</button>
+  </div>
+
+  <div class="iw-layout">
+    <aside class="iw-filters" id="iw-filters" aria-label="Product filters">
+      <div class="iw-filter-heading"><h2>Filters</h2><button type="button" id="iw-reset" class="iw-text-button">Clear all</button></div>
+      <label>Image status<select data-filter="image"><option value="">All images</option><option value="missing">Missing image</option><option value="present">Has image</option><option value="uploaded">Uploaded photo</option><option value="linked">Image URL</option></select></label>
+      <label>Company<select data-filter="company"><option value="">All companies</option></select></label>
+      <label>Brand<select data-filter="brand"><option value="">All brands</option></select></label>
+      <label>Category<select data-filter="category"><option value="">All categories</option></select></label>
+      <label>Unit<select data-filter="unit"><option value="">All units</option></select></label>
+      <label>Catalogue visibility<select data-filter="active"><option value="">All products</option><option value="yes">Active</option><option value="no">Inactive</option></select></label>
+      <label>Regular products<select data-filter="regular"><option value="">All products</option><option value="yes">Regular only</option><option value="no">Other products</option></select></label>
+      <div class="iw-tip"><b>A faster photo pass</b><p>Choose “Missing image”, filter a company, then use “Save &amp; next”. On your phone, tap “Take photo”.</p></div>
+    </aside>
+    <section class="iw-results" aria-label="Product image catalogue">
+      <div class="iw-results-heading"><p id="iw-count" role="status" aria-live="polite">Loading products…</p><span>One image per product</span></div>
+      <p class="iw-notice" id="iw-notice" role="status" aria-live="polite" hidden></p>
+      <div class="iw-grid" id="iw-grid" aria-busy="true"></div>
+      <div class="iw-empty" id="iw-empty" hidden><span aria-hidden="true">▧</span><h2>No products found</h2><p>Try a different search or clear your filters.</p><button type="button" class="iw-button" id="iw-empty-reset">Clear search &amp; filters</button></div>
+      <div class="iw-pagination"><button type="button" class="iw-button" id="iw-prev">← Previous</button><span id="iw-page"></span><button type="button" class="iw-button" id="iw-next">Next →</button></div>
+    </section>
+  </div>
+
+  <dialog class="iw-dialog" id="iw-dialog" aria-labelledby="iw-editor-title">
+    <div class="iw-dialog-header"><div><p class="iw-eyebrow" id="iw-editor-sku"></p><h2 id="iw-editor-title"></h2><p id="iw-editor-meta"></p></div><button type="button" class="iw-close" id="iw-close" aria-label="Close product editor">×</button></div>
+    <div class="iw-tabs" role="tablist" aria-label="Product editor">
+      <button type="button" role="tab" id="iw-tab-details" aria-controls="iw-panel-details" data-tab="details" aria-selected="true">Details</button>
+      <button type="button" role="tab" id="iw-tab-pricing" aria-controls="iw-panel-pricing" data-tab="pricing" aria-selected="false" tabindex="-1">Pricing &amp; tax</button>
+      <button type="button" role="tab" id="iw-tab-upload" aria-controls="iw-panel-upload" data-tab="upload" aria-selected="false" tabindex="-1">Photo</button>
+      <button type="button" role="tab" id="iw-tab-edit" aria-controls="iw-panel-edit" data-tab="edit" aria-selected="false" tabindex="-1">Edit image</button>
+      <button type="button" role="tab" id="iw-tab-url" aria-controls="iw-panel-url" data-tab="url" aria-selected="false" tabindex="-1">Image URL</button>
+    </div>
+    <div class="iw-dialog-body">
+      <section role="tabpanel" class="iw-attribute-panel" id="iw-panel-details" aria-labelledby="iw-tab-details">
+        <div class="iw-panel-intro"><h3>Product details</h3><p>Save changes across all tabs together. Required fields are marked *.</p></div>
+        <div class="iw-attribute-grid">
+          <label>Full product name *<input data-attribute="name" type="text" maxlength="255" required autocomplete="off"></label>
+          <label>Display name<input data-attribute="simple_name" type="text" maxlength="255" autocomplete="off"><small>Shown to shops. Leave empty to use the full name.</small></label>
+          <label>SKU *<input data-attribute="sku" type="text" maxlength="100" required autocomplete="off"></label>
+          <label>Company *<select data-attribute="company_name" required></select></label>
+          <label>Brand *<select data-attribute="brand_name" required></select></label>
+          <label>Category *<select data-attribute="category_name" required></select></label>
+          <label>Packing *<input data-attribute="packing" type="text" maxlength="150" required placeholder="e.g. 12 × 100g"></label>
+          <label>Unit *<input data-attribute="unit" type="text" maxlength="50" required list="iw-unit-options" placeholder="e.g. case, piece"><datalist id="iw-unit-options"></datalist></label>
+          <label class="iw-checkbox"><input data-attribute="active" type="checkbox">Visible in catalogue</label>
+          <label class="iw-checkbox"><input data-attribute="regular" type="checkbox">Regular (best seller)</label>
+        </div>
+      </section>
+      <section role="tabpanel" class="iw-attribute-panel" id="iw-panel-pricing" aria-labelledby="iw-tab-pricing" hidden>
+        <div class="iw-panel-intro"><h3>Pricing &amp; tax</h3><p>Enter prices in rupees. Shops see the sale rate including GST.</p></div>
+        <div class="iw-attribute-grid">
+          <label>Sale rate (₹, before GST) *<input data-attribute="rate" type="number" min="0" step="0.01" required inputmode="decimal"></label>
+          <label>MRP (₹) *<input data-attribute="mrp" type="number" min="0" step="0.01" required inputmode="decimal"></label>
+          <label>GST (%) *<input data-attribute="gst_rate" type="number" min="0" max="100" step="0.01" required inputmode="decimal"></label>
+          <label>Scheme (%) *<input data-attribute="scheme_percent" type="number" min="0" max="100" step="0.01" required inputmode="decimal"><small>Shown to shops; applied on the Marg bill.</small></label>
+          <label>HSN master<select data-attribute="hsn"><option value="">No HSN master</option></select></label>
+          <label>HSN code<input data-attribute="hsn_code" type="text" maxlength="20"><small>Uses the master’s code when an HSN master is selected.</small></label>
+        </div>
+        <p class="iw-price-preview" id="iw-price-preview" aria-live="polite"></p>
+      </section>
+      <div class="iw-editor-preview" id="iw-preview"><img id="iw-preview-image" alt="Product image preview" hidden><canvas id="iw-canvas" aria-label="Image preview. Drag to position your crop." hidden></canvas><span id="iw-preview-empty">No image yet</span><span class="iw-preview-tag" id="iw-preview-tag">Current image</span></div>
+      <div class="iw-editor-controls" id="iw-media-controls">
+        <section role="tabpanel" id="iw-panel-upload" aria-labelledby="iw-tab-upload">
+          <h3>A clear photo goes a long way.</h3><p>Show the front of the pack with good light and a plain background.</p>
+          <div class="iw-upload-actions"><button type="button" class="iw-button iw-primary" id="iw-camera">Take photo</button><button type="button" class="iw-button" id="iw-choose">Choose image</button></div>
+          <button type="button" class="iw-dropzone" id="iw-dropzone"><span aria-hidden="true">↑</span><b>Drop an image here</b><span>or click to browse · paste with Ctrl / ⌘ + V</span><small>JPEG, PNG, WebP and other supported photos · up to 10 MB</small></button>
+          <input type="file" accept="image/*" id="iw-file" hidden>
+          <p class="iw-file-info" id="iw-file-info"></p>
+        </section>
+        <section role="tabpanel" id="iw-panel-edit" aria-labelledby="iw-tab-edit" hidden>
+          <h3>Make the product the focus.</h3><p id="iw-edit-hint">Choose an image or edit the current photo. Drag the preview to position your crop.</p>
+          <label>Crop shape<select id="iw-crop"><option value="original">Original proportions</option><option value="1">Square · 1:1</option><option value="1.3333333333">Landscape · 4:3</option><option value="0.75">Portrait · 3:4</option></select></label>
+          <div class="iw-edit-buttons"><button type="button" class="iw-button" id="iw-rotate-left" aria-label="Rotate left 90 degrees">↶ Left</button><button type="button" class="iw-button" id="iw-rotate-right" aria-label="Rotate right 90 degrees">↷ Right</button><button type="button" class="iw-button" id="iw-flip" aria-pressed="false">↔ Flip</button></div>
+          <label>Zoom <output id="iw-zoom-value">1×</output><input type="range" id="iw-zoom" min="1" max="3" step="0.05" value="1"></label>
+          <label>Brightness <output id="iw-brightness-value">100%</output><input type="range" id="iw-brightness" min="50" max="150" step="1" value="100"></label>
+          <button type="button" class="iw-text-button" id="iw-edit-reset">Reset edits</button>
+          <p class="iw-small">Edits are saved as an uploaded photo. Photos are resized automatically for the catalogue.</p>
+        </section>
+        <section role="tabpanel" id="iw-panel-url" aria-labelledby="iw-tab-url" hidden>
+          <h3>Use a hosted image.</h3><p>Paste a direct image URL. Shops will load this image from its host.</p>
+          <label>Image URL<input type="url" id="iw-url" placeholder="https://example.com/product.jpg" maxlength="200"></label>
+          <button type="button" class="iw-button" id="iw-url-preview">Preview URL</button>
+          <p class="iw-small">Saving a URL replaces the uploaded photo. To crop a hosted image, its host must allow access from this console.</p>
+        </section>
+      </div>
+    </div>
+    <p class="iw-editor-status" id="iw-editor-status" role="status" aria-live="polite" hidden></p>
+    <footer class="iw-dialog-footer"><button type="button" class="iw-text-button iw-danger" id="iw-remove">Remove image</button><div><button type="button" class="iw-button" id="iw-cancel">Cancel</button><button type="button" class="iw-button" id="iw-save">Save changes</button><button type="button" class="iw-button iw-primary" id="iw-save-next">Save &amp; next →</button></div></footer>
+  </dialog>
+  <noscript><p class="iw-notice">Enable JavaScript to use the image workspace.</p></noscript>
+</main>
+<script src="{% static 'console/product-images.js' %}?v=2" defer></script>
+{% endblock %}

@@ -44,9 +44,10 @@ class ProductForm(forms.ModelForm):
         # The photo picker is rendered by hand in the product form so phones get
         # big "Take photo" / "Choose" buttons; keep only the attributes Django
         # needs for validation and the degraded (no-JS) case.
-        self.fields["image"].widget.attrs["accept"] = "image/*"
-        self.fields["image"].widget.initial_text = "Current photo"
-        self.fields["image"].widget.clear_checkbox_label = "Remove photo"
+        if "image" in self.fields:
+            self.fields["image"].widget.attrs["accept"] = "image/*"
+            self.fields["image"].widget.initial_text = "Current photo"
+            self.fields["image"].widget.clear_checkbox_label = "Remove photo"
 
     def save(self, commit=True):
         product = super().save(commit=False)

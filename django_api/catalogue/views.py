@@ -2,11 +2,13 @@ import json
 import uuid
 
 from django.db import IntegrityError, connection, transaction
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import DistributorProfile, DailyDeal, Order, OrderItem, Product, PushSubscription, Shop
+from .models import DistributorProfile, DailyDeal, Order, OrderItem, Product, ProductBundle, ProductBundleItem, PushSubscription, Shop
+from .schemes import discounted_total, effective_schemes
 
 
 @require_GET
@@ -73,14 +75,33 @@ def catalogue(request):
         "company", "brand", "category"
     )
     profile = DistributorProfile.objects.first()
+    bundles = ProductBundle.objects.filter(active=True).prefetch_related(
+        Prefetch("items", queryset=ProductBundleItem.objects.filter(product__active=True))
+    )
     deals = (
         DailyDeal.objects.filter(active=True, product__active=True)
         .select_related("product")
         .order_by("weekday")
     )
+    products = list(products)
+    schemes = effective_schemes(products)
     return JsonResponse(
         {
             "supportPhone": profile.phone if profile else "",
+            "shopTypes": [{"id": value, "name": label} for value, label in Shop.TYPE_CHOICES],
+            "bundles": [
+                {
+                    "id": str(bundle.pk),
+                    "name": bundle.name,
+                    "shopType": bundle.shop_type,
+                    "description": bundle.description,
+                    "items": [
+                        {"productId": str(item.product_id), "quantity": item.quantity}
+                        for item in bundle.items.all()
+                    ],
+                }
+                for bundle in bundles if bundle.items.all()
+            ],
             "deals": [
                 {
                     "weekday": deal.weekday,
@@ -106,7 +127,8 @@ def catalogue(request):
                     "rateInclusive": product.rate_inclusive,
                     "mrp": product.mrp,
                     "gstRate": str(product.gst_rate),
-                    "schemePercent": str(product.scheme_percent),
+                    "schemePercent": str(schemes[product.id][0]),
+                    "schemeName": schemes[product.id][1],
                     "regular": product.regular,
                     "imageUrl": product.image.url if product.image else product.image_url,
                     "updatedAt": product.updated_at.isoformat(),
@@ -212,6 +234,9 @@ def create_order(request):
         return _error("shop.storeName is required")
     if not isinstance(shop_data.get("mobile"), str) or not shop_data["mobile"].strip():
         return _error("shop.mobile is required")
+    shop_type = shop_data.get("shopType", "")
+    if not isinstance(shop_type, str) or (shop_type and shop_type not in dict(Shop.TYPE_CHOICES)):
+        return _error("shop.shopType is invalid")
     if not isinstance(items, list) or not items or len(items) > 500:
         return _error("items must contain between 1 and 500 entries")
 
@@ -239,9 +264,15 @@ def create_order(request):
                     return _error("quantity must be between 1 and 100000")
                 if item.get("unit") != product.unit:
                     return _error("invalid product unit")
-                line_total = quantity * product.rate
+                accepted.append((product, quantity))
+
+            schemes = effective_schemes(product for product, _ in accepted)
+            priced = []
+            for product, quantity in accepted:
+                scheme_percent = schemes[product.id][0]
+                line_total = discounted_total(quantity, product.rate, scheme_percent)
                 total += line_total
-                accepted.append((product, quantity, line_total))
+                priced.append((product, quantity, scheme_percent, line_total))
 
             shop_data = {
                 key: value.strip() if isinstance(value, str) else value
@@ -251,6 +282,7 @@ def create_order(request):
                 mobile=shop_data["mobile"],
                 store_name=shop_data["storeName"],
                 defaults={
+                    "shop_type": shop_type,
                     "customer_name": shop_data.get("customerName", ""),
                     "gstin": shop_data.get("gstin", ""),
                     "address": shop_data.get("address", ""),
@@ -261,6 +293,9 @@ def create_order(request):
                     "location_accuracy": shop_data.get("locationAccuracy"),
                 },
             )
+            if shop_type and shop.shop_type != shop_type:
+                shop.shop_type = shop_type
+                shop.save(update_fields=["shop_type", "updated_at"])
             order = Order.objects.create(
                 client_order_id=client_order_id,
                 order_number="ORD-" + uuid.uuid4().hex[:10].upper(),
@@ -286,10 +321,10 @@ def create_order(request):
                         quantity=quantity,
                         rate=product.rate,
                         gst_rate=product.gst_rate,
-                        scheme_percent=product.scheme_percent,
+                        scheme_percent=scheme_percent,
                         line_total=line_total,
                     )
-                    for product, quantity, line_total in accepted
+                    for product, quantity, scheme_percent, line_total in priced
                 ]
             )
     except IntegrityError:

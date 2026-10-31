@@ -45,9 +45,13 @@ main {
 }
 
 /* The catalogue owns the viewport height, so the list fills whatever space
-   the header, notice, controls and new-products strip leave behind. */
+   the header, notice and controls leave behind. */
 .catalogue { height: 100dvh; overflow: hidden; padding-bottom: 0; }
-.catalogue .product-list { flex: 1; min-height: 0; height: auto; padding-bottom: 84px; }
+.catalogue .product-list { flex: 1; min-height: 0; height: auto; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.catalogue > header, .catalogue > .notice, .catalogue > .controls, .catalogue > .catalogue-meta { flex-shrink: 0; }
+.catalogue > header { height: 52px; padding-block: 6px; }
+.header-brand > div { min-width: 0; }
+.header-brand > div > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Header */
 header {
@@ -149,7 +153,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 
 /* Catalogue controls */
 .controls {
-  padding: 12px 16px 8px;
+  padding: 8px 16px 6px;
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
@@ -160,7 +164,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 48px;
+  min-height: 42px;
   padding: 0 12px 0 13px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -203,7 +207,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
   background: #fff;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
-.search { background: #efede7; border-color: transparent; font-size: 14px; }
+.search { height: 42px; padding-block: 10px; background: #efede7; border-color: transparent; font-size: 14px; }
 .search::placeholder { color: var(--faint); }
 .search:focus, select:focus, input:focus {
   outline: none;
@@ -211,18 +215,24 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
   border-color: var(--brand);
   box-shadow: 0 0 0 4px var(--brand-soft);
 }
-.count { padding: 8px 16px 6px; font-size: 11.5px; color: var(--muted); }
+.catalogue-meta { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 16px; }
+.count { flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted); }
+.catalogue-action { flex: 0 0 auto; min-height: 32px; padding: 4px 0 4px 8px; border: 0; background: none; font-size: 12px; font-weight: 650; color: var(--brand); }
 
-/* Liked + discover toggles */
-.quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+/* Catalogue views stay on one horizontally scrollable row. */
+.quick-row { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 1px; }
+.quick-row::-webkit-scrollbar { display: none; }
 .quick-toggle {
+  flex: 0 0 auto;
+  min-height: 34px;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 999px;
-  padding: 7px 11px;
+  padding: 6px 10px;
   font-size: 12.5px;
   font-weight: 650;
   color: var(--muted);
@@ -232,54 +242,8 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .quick-count { border-radius: 999px; background: var(--brand); color: #fff; padding: 1px 6px; font-size: 10.5px; font-weight: 700; }
 .quick-toggle.active .quick-count { background: var(--brand-dark); }
 
-/* Order again card */
-.repeat-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: calc(100% - 32px);
-  margin: 10px 16px 2px;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: 16px;
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-  text-align: left;
-}
-.repeat-card:active { background: #dbe0f3; }
-.repeat-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px; background: var(--brand); color: #fff; }
-.repeat-icon svg { width: 19px; height: 19px; }
-.repeat-copy { flex: 1 1 auto; min-width: 0; }
-.repeat-copy b { display: block; font-size: 14px; font-weight: 750; }
-.repeat-copy small { display: block; margin-top: 2px; font-size: 12px; color: var(--body); }
-.repeat-go { font-size: 20px; color: var(--brand); }
-
 /* Daily deals */
-.deal-block { margin: 10px 16px 2px; }
-.deal-hero {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 3px 12px;
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid #f0d9a8;
-  border-radius: 16px;
-  background: var(--warning-soft);
-  color: var(--ink);
-  text-align: left;
-}
-.deal-hero:active { background: #ffe9bd; }
-.deal-tag { grid-column: 1 / -1; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; color: var(--warning); }
-.deal-copy { min-width: 0; }
-.deal-copy b { display: block; font-size: 14px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.deal-copy small { display: block; margin-top: 2px; font-size: 12px; color: var(--body); }
-.deal-price { text-align: right; font-variant-numeric: tabular-nums; }
-.deal-price strong { display: block; font-size: 15px; font-weight: 750; }
-.deal-price small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); text-decoration: line-through; }
-.deal-week-link { margin-top: 6px; border: 0; background: none; color: var(--brand); font-size: 12.5px; font-weight: 700; padding: 4px 0; }
 .deal-chip { display: inline-block; margin-right: 6px; padding: 2px 7px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
-.deal-photo { position: relative; }
-.deal-day { position: absolute; left: 3px; bottom: 3px; padding: 2px 5px; border-radius: 999px; background: rgba(28, 27, 25, .78); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; }
 
 /* Order status + notifications */
 .orders-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -302,19 +266,24 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 /* Product list */
 .product-list { overflow: auto; }
 .product {
-  height: 93px;
+  /* Rows grow with the name; the list measures each one. */
+  min-height: 80px;
   position: absolute;
+  top: 0;
   width: 100%;
-  padding: 13px 16px;
+  padding: 10px 16px;
   border-top: 1px solid #efede7;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 .product:active { background: #f6f5f1; }
+.product.in-cart { background: #f3f9f5; box-shadow: inset 3px 0 0 var(--success); }
+.product.in-cart:active { background: var(--success-soft); }
+.product.in-cart .quantity input { background: var(--success-soft); border-color: #b5d7c2; color: var(--success); }
 /* Photo and details share one left-aligned group that takes the space the
    quantity stepper leaves, so every card truncates at the same width. */
-.product-main { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; }
+.product-main { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
 .product-info { flex: 1 1 auto; min-width: 0; }
 .product b, .history b {
   display: block;
@@ -325,15 +294,16 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
   text-overflow: ellipsis;
 }
 .product small, .history small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
-.product small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.product b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; line-height: 1.3; }
+.product small { margin-top: 2px; }
 .product small .scheme-chip { margin-left: 0; margin-right: 6px; }
-.product strong { font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; align-items: baseline; gap: 6px; min-width: 0; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.product strong { font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; align-items: baseline; gap: 6px; min-width: 0; margin-top: 3px; font-variant-numeric: tabular-nums; }
 .product strong .rate { display: flex; align-items: baseline; gap: 4px; flex: 0 1 auto; min-width: 0; }
 .product strong .amount { flex: 0 0 auto; white-space: nowrap; }
 .product strong .unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .product strong .mrp { flex: 0 0 auto; font-size: 11px; font-weight: 500; color: var(--faint); white-space: nowrap; }
 /* Photo wrapper keeps the heart on the corner without shifting the row. */
-.product-photo { position: relative; flex: 0 0 56px; }
+.product-photo { position: relative; flex: 0 0 48px; }
 .product-photo .product-image { display: block; }
 .like-button {
   position: absolute;
@@ -354,6 +324,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .product em { font-size: 11px; font-style: normal; font-weight: 500; color: var(--faint); }
 /* On the narrowest phones the unit is the first thing to go, so the rate and
    MRP stay readable instead of a lone slash. */
+
 @media (max-width: 340px) { .product strong .unit { display: none; } }
 .scheme-chip {
   display: inline-block;
@@ -373,10 +344,11 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .quantity button {
   border: 1px solid var(--line);
   background: #fff;
-  border-radius: 11px;
-  width: 34px;
-  height: 34px;
-  font-size: 19px;
+  border-radius: 12px;
+  /* 44px is the comfortable minimum for a thumb. */
+  width: 44px;
+  height: 44px;
+  font-size: 21px;
   line-height: 1;
   color: var(--brand-dark);
   transition: background .12s, border-color .12s;
@@ -384,7 +356,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 .quantity button:hover { background: var(--brand-soft); border-color: var(--brand-soft); }
 .quantity input {
   width: 42px;
-  height: 34px;
+  height: 44px;
   padding: 3px 2px;
   text-align: center;
   border-radius: 11px;
@@ -398,7 +370,7 @@ header span { display: block; font-size: 11.5px; color: var(--muted); margin-top
 /* Cart button */
 .cart-fab {
   position: fixed;
-  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   border: 0;
@@ -502,11 +474,17 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 }
 
 @media (max-width: 380px) {
-  .product { padding-left: 12px; padding-right: 12px; }
+  .controls { padding-inline: 12px; }
+  .catalogue-meta { padding-inline: 12px; }
+  .product-main { gap: 8px; }
+  .product .quantity { gap: 3px; }
+  .product .quantity input { width: 32px; }
+
+  .product { padding-left: 12px; padding-right: 12px; gap: 8px; }
   .product-info b { font-size: 13px; }
   .quantity { gap: 4px; }
-  .quantity button { width: 31px; }
-  .quantity input { width: 36px; }
+  .quantity button { width: 40px; }
+  .quantity input { width: 34px; }
   .menu-list { min-width: 180px; }
   .filter-toggle { padding: 0 12px; }
   .filter-toggle .filter-label, .filter-toggle .filter-chevron { display: none; }
@@ -517,6 +495,7 @@ label { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 14px; 
 @media (min-width: 761px) {
   main { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
   .cart-fab { bottom: calc(28px + env(safe-area-inset-bottom)); }
+  .catalogue .product-list { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
 }
 
 /* Keypad */

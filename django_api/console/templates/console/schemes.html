@@ -1,0 +1,30 @@
+{% extends 'console/base.html' %}
+{% block content %}
+<main class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-extrabold">Schemes</h1>
+      <p class="mt-1 text-sm text-slate-500">One trade scheme across many SKUs, e.g. 3% on every Dia pack. Taken off the pre-GST rate on new orders; the best running scheme wins, they do not add up.</p>
+    </div>
+    <a href="{% url 'console-scheme-create' %}" class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white">Add scheme</a>
+  </div>
+  <div class="grid gap-4 lg:grid-cols-2">
+    {% for scheme, status in schemes %}
+    <article class="rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-200">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold text-brand-600">{{ scheme.percent|floatformat:"-2" }}% off · {{ scheme.product_count }} product{{ scheme.product_count|pluralize }}</p>
+          <h2 class="mt-1 text-lg font-bold">{{ scheme.name }}</h2>
+        </div>
+        <span class="rounded-full px-2 py-1 text-xs font-semibold {% if status == 'Running' %}bg-emerald-50 text-emerald-700{% elif status == 'Scheduled' %}bg-amber-50 text-amber-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ status }}</span>
+      </div>
+      {% if scheme.starts_on or scheme.ends_on %}<p class="mt-2 text-sm text-slate-500">{% if scheme.starts_on %}From {{ scheme.starts_on|date:'d M Y' }}{% endif %}{% if scheme.starts_on and scheme.ends_on %} · {% endif %}{% if scheme.ends_on %}Until {{ scheme.ends_on|date:'d M Y' }}{% endif %}</p>{% endif %}
+      <p class="my-3 line-clamp-2 text-sm text-slate-600">{% for product in scheme.products.all|slice:":6" %}{{ product }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if scheme.product_count > 6 %} and {{ scheme.product_count|add:"-6" }} more{% endif %}</p>
+      <a href="{% url 'console-scheme-edit' scheme.pk %}" class="text-sm font-semibold text-brand-600">Edit scheme →</a>
+    </article>
+    {% empty %}
+    <p class="rounded-2xl border border-dashed border-slate-300 p-8 text-sm text-slate-500 lg:col-span-2">No schemes yet. Add one, give it a percentage, and tick the SKUs it covers.</p>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

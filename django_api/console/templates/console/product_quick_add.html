@@ -1,0 +1,113 @@
+{% extends 'console/base.html' %}
+{% load static console_tags %}
+
+{% block content %}
+<main class="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:py-7">
+  <div class="mb-5 flex items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-wider text-brand-600">Catalogue</p>
+      <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Quick add</h1>
+      <p class="mt-1 text-sm text-slate-500">One screen per product. <b>Save &amp; add another</b> keeps the company, brand, category, HSN and unit.</p>
+    </div>
+    <a class="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 sm:block" href="{% url 'console-products' %}">Done</a>
+  </div>
+
+  <section class="mb-5 rounded-2xl bg-white p-5 shadow-card ring-1 ring-slate-200/80 sm:p-6">
+    <h2 class="text-base font-bold">Bring back an archived product</h2>
+    <p class="mt-1 text-sm text-slate-500">Restores it with its SKU, rates and photo as they were.</p>
+    <form class="mt-3 flex gap-2" role="search">
+      <input name="find" value="{{ find }}" placeholder="Search archived name, brand or SKU"
+             class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+      <button class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Find</button>
+    </form>
+    {% if find %}
+    <ul class="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
+      {% for product in archived %}
+      <li class="flex items-center gap-3 px-3 py-2.5">
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm font-semibold">{{ product }}</span>
+          <span class="block truncate text-xs text-slate-500">{{ product.brand }} · {{ product.packing }} · ₹{{ product.rate_inclusive|rupees }} incl. GST · SKU {{ product.sku }}</span>
+        </span>
+        <form method="post" action="{% url 'console-product-restore' product.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="find" value="{{ find }}">
+          <button class="rounded-lg border border-brand-200 px-3 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-50">Restore</button>
+        </form>
+      </li>
+      {% empty %}
+      <li class="px-3 py-4 text-sm text-slate-500">No archived product matches “{{ find }}”. Add it below.</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <form x-data="productEditor('details')" @open-product-master.window="openMaster($event.detail)" @submit="saving = true"
+        class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80"
+        method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <div class="p-5 sm:p-7">
+      {% if form.errors %}
+      <div role="alert" class="mb-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">Fix the fields marked below.{{ form.non_field_errors }}</div>
+      {% elif source %}
+      <p class="mb-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Duplicating <b>{{ source }}</b>. Change what differs — usually the name, packing and rates — then save. The SKU and photo are not copied.</p>
+      {% elif carried %}
+      <p class="mb-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Company, brand, category, HSN and unit carried over from the last product.</p>
+      {% endif %}
+
+      <div class="grid gap-4 lg:grid-cols-2">
+        {% include 'console/_field.html' with field=form.name %}
+        {% include 'console/_field.html' with field=form.simple_name %}
+        {% include 'console/_field.html' with field=form.company_name %}
+        {% include 'console/_field.html' with field=form.brand_name %}
+        {% include 'console/_field.html' with field=form.category_name %}
+        {% include 'console/_field.html' with field=form.packing %}
+        {% include 'console/_field.html' with field=form.unit %}
+        {% include 'console/_field.html' with field=form.rate %}
+        {% include 'console/_field.html' with field=form.mrp %}
+        {% include 'console/_field.html' with field=form.hsn %}
+        {% include 'console/_field.html' with field=form.gst_rate %}
+        {% include 'console/_field.html' with field=form.scheme_percent %}
+        {% include 'console/_field.html' with field=form.sku %}
+
+        <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 p-4 lg:col-span-2">
+          <div class="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+            <template x-if="preview"><img :src="preview" alt="New product photo" class="h-full w-full object-cover"></template>
+            <template x-if="!preview"><span class="text-2xl text-slate-400">▦</span></template>
+          </div>
+          <div class="min-w-[200px] flex-1 space-y-2">
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" @click="pickPhoto(true)">Take photo</button>
+              <button type="button" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 hover:text-brand-600" @click="pickPhoto(false)">Choose from gallery</button>
+            </div>
+            <p x-show="photoBusy" x-cloak class="text-xs font-semibold text-brand-600">Optimising photo…</p>
+            <p x-show="!photoBusy && photoName" x-cloak class="text-xs font-semibold text-emerald-600" x-text="photoName"></p>
+            <p x-show="!photoName && !photoBusy" class="text-xs text-slate-500">Optional — you can add it later from the products list.</p>
+            <input type="file" name="image" id="id_image" accept="image/*" x-ref="photoInput" @change="onPhotoPicked($event)" class="hidden">
+            {% for error in form.image.errors %}<p class="text-xs font-medium text-rose-600">{{ error }}</p>{% endfor %}
+          </div>
+        </div>
+
+        <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700 lg:col-span-2">
+          {{ form.regular }}
+          <span>Regular (best seller) — show on the Regular shelf</span>
+        </label>
+      </div>
+    </div>
+
+    {% include 'console/_master_modal.html' %}
+
+    <div class="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:px-7">
+      <a class="mr-auto rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100" href="{% url 'console-products' %}">Cancel</a>
+      <input type="hidden" name="next" value="another" x-ref="next">
+      <button @click="$refs.next.value = 'done'" :disabled="saving"
+              class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-brand-400 disabled:opacity-60">Save</button>
+      <button @click="$refs.next.value = 'another'" :disabled="saving"
+              class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-wait disabled:opacity-60">
+        <span x-text="saving ? 'Saving…' : 'Save & add another'"></span>
+      </button>
+    </div>
+  </form>
+</main>
+<script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
+<script src="{% static 'console/product-editor.js' %}?v=2" data-lookup-url="{% url 'console-quick-lookup' %}"></script>
+{% endblock %}

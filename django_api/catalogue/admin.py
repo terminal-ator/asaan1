@@ -16,6 +16,8 @@ from .models import (
     Order,
     OrderItem,
     Product,
+    ProductBundle,
+    ProductBundleItem,
     HSN,
     Purchase,
     PurchaseItem,
@@ -30,6 +32,20 @@ from .models import (
 )
 
 admin.site.register(HSN)
+
+
+class ProductBundleItemInline(admin.TabularInline):
+    model = ProductBundleItem
+    autocomplete_fields = ("product",)
+    extra = 1
+
+
+@admin.register(ProductBundle)
+class ProductBundleAdmin(admin.ModelAdmin):
+    list_display = ("name", "shop_type", "active")
+    list_filter = ("shop_type", "active")
+    search_fields = ("name",)
+    inlines = (ProductBundleItemInline,)
 
 
 @admin.register(Company, Brand, Category)
