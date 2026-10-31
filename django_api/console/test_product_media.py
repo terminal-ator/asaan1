@@ -96,6 +96,12 @@ class ProductImageWorkspaceTests(TestCase):
         self.assertEqual(data["facets"]["category"], ["Drinks", "Snacks"])
         self.assertEqual(data["facets"]["unit"], ["case", "piece"])
 
+    def test_facets_follow_the_live_or_archived_side(self):
+        live = self.client.get(self.list_url, {"active": "yes"}).json()["facets"]
+        self.assertEqual((live["company"], live["brand"], live["category"]), (["Acme"], ["Fresh"], ["Snacks"]))
+        archived = self.client.get(self.list_url, {"active": "no"}).json()["facets"]
+        self.assertEqual((archived["company"], archived["unit"]), (["Other Co"], ["piece"]))
+
     def test_pagination_has_no_silent_product_limit(self):
         Product.objects.bulk_create([
             Product(sku=f"BULK-{index}", name=f"Bulk {index:03}", company=self.product.company,

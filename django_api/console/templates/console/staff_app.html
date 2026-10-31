@@ -56,6 +56,25 @@
                 class="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold" x-text="option[1]"></button>
       </template>
     </nav>
+    <!-- Filter bar: the button opens the sheet, each chip removes one filter. -->
+    <div class="no-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1">
+      <button type="button" @click="openFilters()" :aria-label="`Filters and sort${filterCount() ? ', ' + filterCount() + ' on' : ''}`"
+              :class="filterCount() ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-white text-slate-600 ring-slate-200'"
+              class="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold ring-1">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        Filters<span x-show="filterCount()" class="rounded-full bg-brand-600 px-1.5 text-xs text-white" x-text="filterCount()"></span>
+      </button>
+      <template x-for="chip in activeFilters()" :key="chip.key">
+        <button type="button" @click="setFilter(chip.key, chip.value)" :aria-label="`Remove ${filterLabel(chip.key)} filter ${chip.label}`"
+                class="flex h-9 shrink-0 items-center gap-1 rounded-full bg-brand-600 pl-3 pr-2 text-sm font-semibold text-white">
+          <span class="max-w-[12rem] truncate" x-text="chip.label"></span><span aria-hidden="true" class="text-base leading-none">×</span>
+        </button>
+      </template>
+      <button type="button" x-show="sort" @click="setSort('')" class="flex h-9 shrink-0 items-center gap-1 rounded-full bg-slate-800 pl-3 pr-2 text-sm font-semibold text-white"
+              :aria-label="`Remove sort ${(sortOptions.find(option => option[0] === sort) || [])[1]}`">
+        <span x-text="(sortOptions.find(option => option[0] === sort) || [])[1]"></span><span aria-hidden="true" class="text-base leading-none">×</span>
+      </button>
+    </div>
   </header>
 
   <div x-show="signedOut" x-cloak class="m-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">
@@ -96,7 +115,7 @@
     </template>
   </ul>
   <p x-show="!loading && !products.length && !listError" x-cloak class="px-6 py-12 text-center text-sm text-slate-500"
-     x-text="query ? 'Nothing matches that search.' : tab === 'photos' ? 'Every live product has a photo.' : tab === 'archived' ? 'Nothing archived.' : 'No live products yet. Tap + to add one, or restore from Archived.'"></p>
+     x-text="activeFilters().length ? 'Nothing matches these filters.' : query ? 'Nothing matches that search.' : tab === 'photos' ? 'Every live product has a photo.' : tab === 'archived' ? 'Nothing archived.' : 'No live products yet. Tap + to add one, or restore from Archived.'"></p>
   <div x-ref="more" class="py-6 text-center text-xs text-slate-400" x-text="loading && products.length ? 'Loading more…' : ''"></div>
   <input type="file" accept="image/*" capture="environment" class="hidden" x-ref="quickPhoto" @change="onQuickPhoto($event)">
 
@@ -316,6 +335,61 @@
     </div>
   </template>
 
+  <!-- Filters and sort -->
+  <template x-if="filtersOpen">
+    <div class="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-6" @click.self="closeFilters()" @keydown.escape.window="closeFilters()">
+      <section class="flex max-h-[85dvh] w-full max-w-xl flex-col rounded-t-3xl bg-white sm:max-h-[80vh] sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="filters-title">
+        <div class="flex items-center gap-2 px-4 pt-4">
+          <h2 id="filters-title" class="flex-1 text-lg font-bold">Filters</h2>
+          <button type="button" x-show="filterCount()" @click="clearFilters()" class="h-11 rounded-xl px-3 text-sm font-semibold text-rose-600">Clear all</button>
+          <button type="button" @click="closeFilters()" class="h-11 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white" x-text="loading ? 'Done' : `Show ${total}`"></button>
+        </div>
+        <div class="px-4 pt-3">
+          <input type="search" x-model="facetQuery" enterkeyhint="search" placeholder="Find a company, brand or category"
+                 class="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-base outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-100">
+        </div>
+        <div class="flex-1 space-y-5 overflow-y-auto px-4 pb-6 pt-4 safe-bottom">
+          <div x-show="!facetQuery">
+            <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Sort</h3>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="option in sortOptions" :key="option[0]">
+                <button type="button" @click="setSort(option[0] === currentSort() && sort ? '' : option[0])" :aria-pressed="currentSort() === option[0]"
+                        :class="currentSort() === option[0] ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'"
+                        class="h-10 rounded-full px-4 text-sm font-semibold" x-text="option[1]"></button>
+              </template>
+            </div>
+          </div>
+          <div x-show="!facetQuery">
+            <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Regular</h3>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="option in [['yes', 'Regular only'], ['no', 'Not regular']]" :key="option[0]">
+                <button type="button" @click="setFilter('regular', option[0])" :aria-pressed="filters.regular === option[0]"
+                        :class="filters.regular === option[0] ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'"
+                        class="h-10 rounded-full px-4 text-sm font-semibold" x-text="option[1]"></button>
+              </template>
+            </div>
+          </div>
+          <template x-for="key in ['company', 'brand', 'category', 'unit']" :key="key">
+            <div x-show="facetChoices(key).length">
+              <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <span x-text="filterLabel(key)"></span>
+                <span x-show="key === 'brand' && filters.company" class="font-normal normal-case tracking-normal" x-text="`of ${filters.company}`"></span>
+              </h3>
+              <div class="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
+                <template x-for="value in facetChoices(key)" :key="value">
+                  <button type="button" @click="setFilter(key, value)" :aria-pressed="filters[key] === value"
+                          :class="filters[key] === value ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'"
+                          class="min-h-10 rounded-full px-4 py-2 text-left text-sm font-semibold" x-text="value"></button>
+                </template>
+              </div>
+            </div>
+          </template>
+          <p x-show="facetQuery && !['company', 'brand', 'category', 'unit'].some(key => facetChoices(key).length)" class="py-6 text-center text-sm text-slate-500">No company, brand or category matches.</p>
+        </div>
+      </section>
+    </div>
+  </template>
+
   <!-- Picker for company, brand, category and HSN -->
   <template x-if="picker">
     <div class="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-6" @click.self="picker = null">
@@ -418,5 +492,5 @@
 </div>
 
 <script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
-<script src="{% static 'console/staff-app.js' %}?v=8"></script>
+<script src="{% static 'console/staff-app.js' %}?v=9"></script>
 {% endblock %}

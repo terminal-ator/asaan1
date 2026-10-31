@@ -116,11 +116,15 @@ def product_list(request):
     items = items.order_by(*sorts.get(request.GET.get("sort"), sorts["company"]))
     paginator = Paginator(items, 48)
     page = paginator.get_page(request.GET.get("page", 1))
+    # Choices come from the same live/archived side as the list, so the
+    # archived catalogue does not crowd the filters for live products.
     scope = Product.objects.all()
+    if request.GET.get("active") in ("yes", "no"):
+        scope = scope.filter(active=request.GET["active"] == "yes")
     brand_scope = scope.filter(company__name=request.GET["company"]) if request.GET.get("company") else scope
 
     def choices(queryset, field):
-        return list(queryset.order_by(field).values_list(field, flat=True).distinct())
+        return list(queryset.exclude(**{f"{field}__isnull": True}).order_by(field).values_list(field, flat=True).distinct())
 
     return JsonResponse({
         "products": [product_data(product) for product in page],

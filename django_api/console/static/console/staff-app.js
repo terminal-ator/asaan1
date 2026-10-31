@@ -38,10 +38,23 @@
     };
   }
 
+  function emptyFilters() {
+    return { company: '', brand: '', category: '', unit: '', regular: '' };
+  }
+
+  const SORT_OPTIONS = [['updated', 'Recently edited'], ['newest', 'Newest'], ['name', 'Name A–Z'], ['company', 'Company']];
+  const FILTER_LABELS = { company: 'Company', brand: 'Brand', category: 'Category', unit: 'Unit', regular: 'Regular' };
+
   window.staffApp = function (config) {
     return {
       tab: 'active',
       query: '',
+      filters: emptyFilters(),
+      sort: '',
+      facets: { company: [], brand: [], category: [], unit: [] },
+      filtersOpen: false,
+      facetQuery: '',
+      sortOptions: SORT_OPTIONS,
       products: [],
       page: 0,
       pages: 1,
@@ -65,7 +78,7 @@
         let timer;
         this.$watch('query', () => { clearTimeout(timer); timer = setTimeout(() => this.load(true), 300); });
         this.$watch('tab', () => this.load(true));
-        window.addEventListener('popstate', () => { this.picker = null; this.editor = null; });
+        window.addEventListener('popstate', () => { this.picker = null; this.editor = null; this.filtersOpen = false; });
         if ('serviceWorker' in navigator) navigator.serviceWorker.register(config.swUrl, { scope: config.scope }).catch(() => {});
         const sentinel = this.$refs.more;
         if (sentinel && 'IntersectionObserver' in window) {
@@ -94,9 +107,10 @@
         if (this.loading && !reset) return;
         const page = reset ? 1 : this.page + 1;
         const params = new URLSearchParams({ q: this.query.trim(), page: String(page) });
-        if (this.tab === 'archived') { params.set('active', 'no'); params.set('sort', 'name'); }
-        else { params.set('active', 'yes'); params.set('sort', 'updated'); }
+        params.set('active', this.tab === 'archived' ? 'no' : 'yes');
+        params.set('sort', this.currentSort());
         if (this.tab === 'photos') params.set('image', 'missing');
+        Object.entries(this.filters).forEach(([key, value]) => { if (value) params.set(key, value); });
         this.loading = true;
         this.listError = '';
         const ticket = (this.ticket = (this.ticket || 0) + 1);
@@ -109,11 +123,45 @@
           this.total = data.total;
           this.lookups = data.lookups;
           this.units = [...new Set([...DEFAULT_UNITS, ...data.facets.unit])];
+          this.facets = data.facets;
         } catch (error) {
           if (ticket === this.ticket && error.message !== 'signed-out') this.listError = error.message;
         } finally {
           if (ticket === this.ticket) this.loading = false;
         }
+      },
+
+      // ---- Filters ------------------------------------------------------
+      currentSort() { return this.sort || (this.tab === 'archived' ? 'name' : 'updated'); },
+      setSort(value) { this.sort = value; this.load(true); },
+      setFilter(key, value) {
+        this.filters[key] = this.filters[key] === value ? '' : value;
+        // Brands are listed for the chosen company, so a brand from another one would hide everything.
+        if (key === 'company') this.filters.brand = '';
+        this.load(true);
+      },
+      clearFilters() { this.filters = emptyFilters(); this.sort = ''; this.load(true); },
+      activeFilters() {
+        return Object.entries(this.filters).filter(([, value]) => value)
+          .map(([key, value]) => ({ key, value, label: key === 'regular' ? (value === 'yes' ? 'Regular only' : 'Not regular') : value }));
+      },
+      filterCount() { return this.activeFilters().length + (this.sort ? 1 : 0); },
+      facetChoices(key) {
+        const words = this.facetQuery.toLowerCase().split(/\s+/).filter(Boolean);
+        const values = (this.facets[key] || []).filter(value => words.every(word => String(value).toLowerCase().includes(word)));
+        // Keep the chosen value visible even when the search would hide it.
+        if (this.filters[key] && !values.includes(this.filters[key])) values.unshift(this.filters[key]);
+        return values;
+      },
+      filterLabel(key) { return FILTER_LABELS[key]; },
+      openFilters() {
+        this.facetQuery = '';
+        this.filtersOpen = true;
+        window.history.pushState({ asaanFilters: true }, '');
+      },
+      closeFilters() {
+        if (window.history.state && window.history.state.asaanFilters) window.history.back();
+        else this.filtersOpen = false;
       },
 
       // ---- List helpers -------------------------------------------------
