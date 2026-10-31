@@ -49,7 +49,7 @@
       {% if form.errors %}
       <div role="alert" class="mb-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">Fix the fields marked below.{{ form.non_field_errors }}</div>
       {% elif source %}
-      <p class="mb-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Duplicating <b>{{ source }}</b>. Change what differs — usually the name, packing and rates — then save. The SKU and photo are not copied.</p>
+      <p class="mb-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Duplicating <b>{{ source }}</b>. Change what differs — usually the name, packing and MRP; the rate follows from the markup. The SKU and photo are not copied.</p>
       {% elif carried %}
       <p class="mb-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Company, brand, category, HSN and unit carried over from the last product.</p>
       {% endif %}
@@ -62,8 +62,9 @@
         {% include 'console/_field.html' with field=form.category_name %}
         {% include 'console/_field.html' with field=form.packing %}
         {% include 'console/_field.html' with field=form.unit %}
-        {% include 'console/_field.html' with field=form.rate %}
         {% include 'console/_field.html' with field=form.mrp %}
+        {% include 'console/_field.html' with field=form.markup_percent %}
+        {% include 'console/_field.html' with field=form.rate %}
         {% include 'console/_field.html' with field=form.hsn %}
         {% include 'console/_field.html' with field=form.gst_rate %}
         {% include 'console/_field.html' with field=form.scheme_percent %}
@@ -109,5 +110,5 @@
   </form>
 </main>
 <script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
-<script src="{% static 'console/product-editor.js' %}?v=2" data-lookup-url="{% url 'console-quick-lookup' %}"></script>
+<script src="{% static 'console/product-editor.js' %}?v=3" data-lookup-url="{% url 'console-quick-lookup' %}"></script>
 {% endblock %}

@@ -43,6 +43,7 @@ def attribute_data(product):
         "hsn_code": product.hsn_code, "packing": product.packing, "unit": product.unit,
         "rate": str(Decimal(product.rate) / 100), "mrp": str(Decimal(product.mrp) / 100),
         "gst_rate": str(product.gst_rate), "scheme_percent": str(product.scheme_percent),
+        "markup_percent": "" if product.markup_percent is None else str(product.markup_percent),
         "active": product.active, "regular": product.regular,
     }
 
@@ -190,7 +191,7 @@ class WorkspaceProductForm(ProductForm):
 
 ATTRIBUTE_FIELDS = [
     "sku", "name", "simple_name", "company", "brand", "category", "hsn", "hsn_code",
-    "packing", "unit", "rate", "mrp", "gst_rate", "scheme_percent", "active", "regular",
+    "packing", "unit", "rate", "mrp", "markup_percent", "gst_rate", "scheme_percent", "active", "regular",
 ]
 
 

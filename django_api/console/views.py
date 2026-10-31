@@ -1098,7 +1098,10 @@ def quick_create_lookup(request):
     if kind in model_map:
         if not name:
             return JsonResponse({"error": "Name is required."}, status=400)
-        obj, _ = model_map[kind].objects.get_or_create(name=name)
+        # "hul" and "HUL" are the same company: reuse it rather than add a near-duplicate.
+        obj = model_map[kind].objects.filter(name__iexact=name).first()
+        if obj is None:
+            obj = model_map[kind].objects.create(name=name)
         return JsonResponse({"id": obj.id, "label": obj.name})
     if kind == "hsn":
         if not name:
@@ -1107,7 +1110,7 @@ def quick_create_lookup(request):
             rate = Decimal(request.POST.get("default_gst_rate", "0"))
         except InvalidOperation:
             return JsonResponse({"error": "GST rate must be numeric."}, status=400)
-        obj, _ = HSN.objects.get_or_create(code=name, defaults={"default_gst_rate": rate})
+        obj = HSN.objects.filter(code__iexact=name).first() or HSN.objects.create(code=name, default_gst_rate=rate)
         return JsonResponse({"id": obj.id, "label": str(obj), "gstRate": str(obj.default_gst_rate)})
     return JsonResponse({"error": "Unsupported master."}, status=400)
 

@@ -81,6 +81,7 @@ urlpatterns = [
     path("app/manifest.webmanifest", staff_app.manifest, name="console-staff-manifest"),
     path("app/sw.js", staff_app.service_worker, name="console-staff-sw"),
     path("app/products", staff_app.create_product, name="console-staff-create"),
+    path("app/masters/<str:kind>/<int:master_id>", staff_app.update_master, name="console-staff-master"),
     path("products/quick-add", quick_add.product_quick_add, name="console-product-quick-add"),
     path("products/<uuid:product_id>/restore", quick_add.product_restore, name="console-product-restore"),
     path("products/images", product_media.workspace, name="console-product-images"),

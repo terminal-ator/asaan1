@@ -24,6 +24,11 @@ class ProductForm(forms.ModelForm):
             self.initial["mrp"] = Decimal(self.instance.mrp) / 100
         if self.instance and self.instance.pk and self.instance.hsn_id:
             self.fields["hsn"].initial = self.instance.hsn_id
+        if "markup_percent" in self.fields:
+            self.fields["markup_percent"].label = "Retailer markup (%)"
+            self.fields["markup_percent"].help_text = "Enter MRP and markup; the rate fills in. MRP ₹100 at 15% → shops pay ₹86.96 incl. GST."
+            if self.instance and self.instance.pk and self.instance.markup_percent is None:
+                self.initial.setdefault("markup_percent", self.instance.implied_markup_percent)
 
         field_class = (
             "block w-full rounded-xl border border-slate-300 bg-white px-3 "
@@ -79,6 +84,7 @@ class ProductForm(forms.ModelForm):
             "unit",
             "rate",
             "mrp",
+            "markup_percent",
             "gst_rate",
             "scheme_percent",
             "image",

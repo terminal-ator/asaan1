@@ -29,6 +29,7 @@
         updateUrl: '{% url 'console-product-quick-edit' '00000000-0000-0000-0000-000000000000' %}'.replace('00000000-0000-0000-0000-000000000000', '__id__'),
         imageUrl: '{% url 'console-product-image-update' '00000000-0000-0000-0000-000000000000' %}'.replace('00000000-0000-0000-0000-000000000000', '__id__'),
         lookupUrl: '{% url 'console-quick-lookup' %}',
+        masterUrl: '{% url 'console-staff-master' 'kind' 0 %}'.replace('/kind/0', '/__kind__/__id__'),
         swUrl: '{% url 'console-staff-sw' %}',
         scope: '/console/app/'
      })"
@@ -129,7 +130,7 @@
                     :class="editor.tab === option[0] ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'"
                     class="flex-1 border-b-2 px-2 py-3 text-sm font-semibold">
               <span x-text="option[1]"></span>
-              <span x-show="Object.keys(editor.errors).some(field => (option[0] === 'details' ? ['name','simple_name','company_name','brand_name','category_name','packing','unit'] : option[0] === 'price' ? ['rate','mrp','hsn','gst_rate','scheme_percent','sku'] : ['image']).includes(field))"
+              <span x-show="Object.keys(editor.errors).some(field => (option[0] === 'details' ? ['name','simple_name','company_name','brand_name','category_name','packing','unit'] : option[0] === 'price' ? ['rate','mrp','markup_percent','hsn','gst_rate','scheme_percent','sku'] : ['image']).includes(field))"
                     class="ml-1 inline-block h-2 w-2 rounded-full bg-rose-500" aria-label="has errors"></span>
             </button>
           </template>
@@ -170,7 +171,10 @@
 
             <template x-for="master in [['company_name', 'Company'], ['brand_name', 'Brand'], ['category_name', 'Category']]" :key="master[0]">
               <div>
-                <span class="mb-1.5 block text-sm font-semibold" x-text="master[1]"></span>
+                <div class="mb-1.5 flex items-center justify-between">
+                  <span class="text-sm font-semibold" x-text="master[1]"></span>
+                  <button type="button" @click="openPicker(master[0], master[1], true)" class="rounded-lg px-2 py-1 text-sm font-semibold text-brand-600" x-text="`+ New ${master[1].toLowerCase()}`"></button>
+                </div>
                 <button type="button" @click="openPicker(master[0], master[1])"
                         :class="fieldError(master[0]) ? 'border-rose-400' : 'border-slate-300'"
                         class="flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-base">
@@ -208,26 +212,33 @@
 
           <!-- Price -->
           <section x-show="editor.tab === 'price'" x-cloak class="space-y-5">
-            <div>
-              <div class="mb-1.5 flex items-center justify-between gap-2">
-                <span class="text-sm font-semibold" x-text="editor.includesGst ? 'Rate shops pay (₹, incl. GST)' : 'Sale rate (₹, before GST)'"></span>
-                <button type="button" @click="toggleIncludesGst()" class="rounded-lg px-2 py-1 text-xs font-semibold text-brand-600" x-text="editor.includesGst ? 'Enter before GST' : 'Enter incl. GST'"></button>
-              </div>
-              <input type="text" inputmode="decimal" x-model="editor.rateText" @input="editor.rateTouched = true; syncRate()" placeholder="0.00"
-                     class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
-              <span x-show="fieldError('rate')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('rate')"></span>
-            </div>
             <label class="block">
               <span class="mb-1.5 block text-sm font-semibold">MRP (₹)</span>
-              <input type="text" inputmode="decimal" x-model="editor.form.mrp" placeholder="0.00"
+              <input type="text" inputmode="decimal" x-model="editor.form.mrp" @input="onMrpInput()" placeholder="0.00"
                      class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
               <span x-show="fieldError('mrp')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('mrp')"></span>
             </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold">Retailer markup (%) <span class="font-normal text-slate-400">rate fills in from MRP</span></span>
+              <input type="text" inputmode="decimal" x-model="editor.markupText" @input="onMarkupInput()" placeholder="e.g. 15"
+                     class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+              <span x-show="fieldError('markup_percent')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('markup_percent')"></span>
+            </label>
+            <div>
+              <div class="mb-1.5 flex items-center justify-between gap-2">
+                <span class="text-sm font-semibold" x-text="editor.includesGst ? 'Rate shops pay (₹, incl. GST)' : 'Sale rate (₹, before GST)'"></span>
+                <button type="button" @click="toggleIncludesGst()" class="rounded-lg px-2 py-1 text-xs font-semibold text-brand-600" x-text="editor.includesGst ? 'Show before GST' : 'Show incl. GST'"></button>
+              </div>
+              <input type="text" inputmode="decimal" x-model="editor.rateText" @input="onRateInput()" placeholder="0.00"
+                     class="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-100">
+              <span class="mt-1 block text-xs text-slate-500">Worked out from MRP and markup. Type a rate to override; the markup follows.</span>
+              <span x-show="fieldError('rate')" class="mt-1 block text-sm text-rose-600" x-text="fieldError('rate')"></span>
+            </div>
             <div>
               <span class="mb-1.5 block text-sm font-semibold">GST %</span>
               <div class="flex flex-wrap gap-2">
                 <template x-for="rate in gstRates" :key="rate">
-                  <button type="button" @click="editor.form.gst_rate = rate; syncRate()"
+                  <button type="button" @click="editor.form.gst_rate = rate; onGstChange()"
                           :class="Number(editor.form.gst_rate) === Number(rate) && editor.form.gst_rate !== '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'"
                           class="h-11 min-w-[56px] rounded-full px-4 text-sm font-semibold" x-text="`${rate}%`"></button>
                 </template>
@@ -236,7 +247,10 @@
             </div>
             <p x-show="priceSummary()" class="rounded-2xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800" x-text="priceSummary()"></p>
             <div>
-              <span class="mb-1.5 block text-sm font-semibold">HSN <span class="font-normal text-slate-400">sets GST</span></span>
+              <div class="mb-1.5 flex items-center justify-between">
+                <span class="text-sm font-semibold">HSN <span class="font-normal text-slate-400">sets GST</span></span>
+                <button type="button" @click="openPicker('hsn', 'HSN', true)" class="rounded-lg px-2 py-1 text-sm font-semibold text-brand-600">+ New HSN</button>
+              </div>
               <button type="button" @click="openPicker('hsn', 'HSN')" class="flex w-full items-center justify-between rounded-2xl border border-slate-300 px-4 py-3 text-left text-base">
                 <span :class="editor.form.hsn ? '' : 'text-slate-400'" x-text="lookupLabel('hsn', editor.form.hsn) || 'Choose HSN'"></span>
                 <span class="text-slate-400" aria-hidden="true">›</span>
@@ -307,18 +321,84 @@
     <div class="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-6" @click.self="picker = null">
       <section class="flex h-[85dvh] w-full max-w-xl flex-col rounded-t-3xl bg-white sm:h-[80vh] sm:rounded-3xl" role="dialog" aria-modal="true" :aria-label="`Choose ${picker.label}`">
         <div class="flex items-center gap-2 px-4 pt-4">
-          <input id="picker-search" type="search" x-model="picker.query" :placeholder="`Search or add ${picker.label.toLowerCase()}`" enterkeyhint="done"
-                 @keydown.enter.prevent="pickerItems().length === 1 ? pick(pickerItems()[0].id) : null"
+          <input id="picker-search" :type="picker.adding ? 'text' : 'search'" x-model="picker.query" enterkeyhint="done"
+                 :placeholder="picker.adding ? (picker.field === 'hsn' ? 'New HSN code' : `New ${picker.label.toLowerCase()} name`) : `Search ${picker.label.toLowerCase()}`"
+                 :autocapitalize="picker.field === 'hsn' ? 'off' : 'words'"
+                 @keydown.enter.prevent="picker.adding ? createMaster() : pickerItems().length === 1 ? pick(pickerItems()[0].id) : null"
                  class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
-          <button type="button" @click="picker = null" class="h-11 rounded-xl px-3 text-sm font-semibold text-slate-600">Close</button>
+          <button type="button" x-show="!picker.adding" @click="startAdding()" class="h-11 shrink-0 rounded-xl bg-brand-50 px-3 text-sm font-bold text-brand-700">+ New</button>
+          <button type="button" @click="picker = null" class="h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-slate-600">Close</button>
         </div>
         <p x-show="picker.error" class="mx-4 mt-2 rounded-xl bg-rose-50 p-2 text-sm text-rose-700" x-text="picker.error"></p>
-        <div class="flex-1 overflow-y-auto px-2 pb-4 pt-2">
-          <template x-for="item in pickerItems()" :key="item.id">
-            <button type="button" @click="pick(item.id)" class="flex min-h-[52px] w-full items-center rounded-xl px-4 text-left text-base active:bg-brand-50"
-                    :class="editor && String(editor.form[picker.field]) === item.id ? 'font-bold text-brand-700' : ''" x-text="item.label"></button>
+        <!-- Adding a new company, brand, category or HSN -->
+        <div x-show="picker.adding" class="flex-1 overflow-y-auto px-4 pb-4 pt-3">
+          <p class="text-sm text-slate-500" x-text="`Add a ${picker.label === 'HSN' ? 'new HSN code' : 'new ' + picker.label.toLowerCase()}. It is saved for everyone and picked for this product.`"></p>
+          <div x-show="picker.field === 'hsn'" class="mt-4">
+            <span class="mb-1.5 block text-sm font-semibold">Default GST for this HSN</span>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="rate in gstRates" :key="rate">
+                <button type="button" @click="picker.gst = rate" :class="picker.gst === rate ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'" class="h-11 min-w-[56px] rounded-full px-4 text-sm font-semibold" x-text="`${rate}%`"></button>
+              </template>
+            </div>
+          </div>
+          <template x-if="existingMatch()">
+            <div class="mt-4 rounded-2xl bg-amber-50 p-3 text-sm text-amber-800">
+              <span x-text="`“${picker.query.trim()}” already exists.`"></span>
+              <button type="button" class="ml-1 font-bold underline" @click="pick(String(existingMatch().id))">Use it</button>
+            </div>
           </template>
-          <template x-if="picker.query.trim() && !pickerItems().some(item => item.label.toLowerCase() === picker.query.trim().toLowerCase())">
+          <button type="button" @click="createMaster()" :disabled="picker.creating || !picker.query.trim() || existingMatch()"
+                  class="mt-4 h-14 w-full rounded-2xl bg-brand-600 text-base font-bold text-white disabled:opacity-50"
+                  x-text="picker.creating ? 'Adding…' : `Add ${picker.label === 'HSN' ? 'HSN' : picker.label.toLowerCase()}`"></button>
+          <template x-if="picker.query.trim() && !existingMatch() && pickerItems().length">
+            <div class="mt-5">
+              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Similar ones already saved — tap to use instead</p>
+              <template x-for="item in pickerItems().slice(0, 5)" :key="item.id">
+                <button type="button" @click="pick(item.id)" class="flex min-h-[48px] w-full items-center rounded-xl px-2 text-left text-base active:bg-brand-50" x-text="item.label"></button>
+              </template>
+            </div>
+          </template>
+          <button type="button" @click="picker.adding = false" class="mt-4 w-full rounded-2xl py-3 text-sm font-semibold text-slate-600" x-text="`Back to the ${picker.label === 'HSN' ? 'HSN' : picker.label.toLowerCase()} list`"></button>
+        </div>
+
+        <div x-show="!picker.adding" class="flex-1 overflow-y-auto px-2 pb-4 pt-2">
+          <template x-for="item in pickerItems()" :key="item.id">
+            <div>
+              <!-- A row: tap to pick, pencil to fix the name in place. -->
+              <div x-show="!picker.editing || picker.editing.id !== item.id" class="flex items-center">
+                <button type="button" @click="pick(item.id)" class="flex min-h-[52px] min-w-0 flex-1 items-center rounded-xl px-4 text-left text-base active:bg-brand-50"
+                        :class="editor && String(editor.form[picker.field]) === item.id ? 'font-bold text-brand-700' : ''" x-text="item.label"></button>
+                <button type="button" @click="startEditing(item.id)" :aria-label="`Edit ${item.label}`"
+                        class="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-400 active:bg-slate-100">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </button>
+              </div>
+              <template x-if="picker.editing && picker.editing.id === item.id">
+                <div class="mx-2 my-2 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                  <label class="block">
+                    <span class="mb-1 block text-xs font-semibold text-slate-500" x-text="picker.field === 'hsn' ? 'HSN code' : `${picker.label} name`"></span>
+                    <input id="picker-edit" x-model="picker.editing.name" enterkeyhint="done" @keydown.enter.prevent="saveEditing()" @keydown.escape.stop="picker.editing = null"
+                           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100">
+                  </label>
+                  <div x-show="picker.field === 'hsn'" class="mt-3">
+                    <span class="mb-1 block text-xs font-semibold text-slate-500">Default GST — products already saved keep their own GST</span>
+                    <div class="flex flex-wrap gap-2">
+                      <template x-for="rate in gstRates" :key="rate">
+                        <button type="button" @click="picker.editing.gst = rate" :class="Number(picker.editing.gst) === Number(rate) ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'" class="h-10 rounded-full px-3 text-sm font-semibold" x-text="`${rate}%`"></button>
+                      </template>
+                    </div>
+                  </div>
+                  <p x-show="picker.editing.error" class="mt-2 text-sm text-rose-600" x-text="picker.editing.error"></p>
+                  <p class="mt-2 text-xs text-slate-500" x-text="picker.field === 'hsn' ? 'Changing the code updates every product that uses it.' : `Renaming changes it on every product with this ${picker.label.toLowerCase()}.`"></p>
+                  <div class="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" @click="picker.editing = null" class="h-11 rounded-xl text-sm font-semibold text-slate-600 ring-1 ring-slate-200">Cancel</button>
+                    <button type="button" @click="saveEditing()" :disabled="picker.editing.saving || !picker.editing.name.trim()" class="h-11 rounded-xl bg-brand-600 text-sm font-bold text-white disabled:opacity-50" x-text="picker.editing.saving ? 'Saving…' : 'Save'"></button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+          <template x-if="picker.query.trim() && !existingMatch()">
             <div class="mx-2 mt-3 rounded-2xl border border-dashed border-brand-200 p-3">
               <div x-show="picker.field === 'hsn'" class="mb-2 flex flex-wrap items-center gap-2 text-sm">
                 <span class="font-semibold text-brand-800">Default GST</span>
@@ -330,7 +410,7 @@
                       x-text="picker.creating ? 'Adding…' : `+ Not listed? Add “${picker.query.trim()}” as a new ${picker.label.toLowerCase()}`"></button>
             </div>
           </template>
-          <p x-show="!pickerItems().length && !picker.query.trim()" class="p-6 text-center text-sm text-slate-500">Nothing here yet. Type a name to add one.</p>
+          <p x-show="!pickerItems().length && !picker.query.trim()" class="p-6 text-center text-sm text-slate-500">Nothing here yet. Tap + New to add one.</p>
         </div>
       </section>
     </div>
@@ -338,5 +418,5 @@
 </div>
 
 <script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
-<script src="{% static 'console/staff-app.js' %}?v=5"></script>
+<script src="{% static 'console/staff-app.js' %}?v=8"></script>
 {% endblock %}

@@ -21,9 +21,33 @@
     input.onfocus = () => { input.select(); render(); }; input.oninput = render; select.onchange = () => { input.value = select.value ? selectedText() : ''; }; document.addEventListener('click', event => { if (!wrap.contains(event.target)) close(); });
   }
   Object.entries(lookupKinds).forEach(([id, [kind, label]]) => superpowerSelect(document.getElementById(id), kind, label));
+  // Rate from MRP and retailer markup: shops pay MRP ÷ (1 + markup %) incl. GST,
+  // and the stored rate is that before GST. Typing a rate updates the markup.
+  const mrpInput = document.getElementById('id_mrp');
+  const markupInput = document.getElementById('id_markup_percent');
+  const rateInput = document.getElementById('id_rate');
+  const gstField = document.getElementById('id_gst_rate');
+  const numberOf = input => (input && input.value.trim() !== '' && Number.isFinite(Number(input.value)) ? Number(input.value) : null);
+  const gstFactor = () => 1 + (numberOf(gstField) || 0) / 100;
+  function rateFromMarkup() {
+    const mrp = numberOf(mrpInput), markup = numberOf(markupInput);
+    if (mrp === null || markup === null || !rateInput) return;
+    rateInput.value = (mrp / (1 + markup / 100) / gstFactor()).toFixed(2);
+  }
+  function markupFromRate() {
+    const mrp = numberOf(mrpInput), rate = numberOf(rateInput);
+    if (mrp === null || !rate || !markupInput) return;
+    markupInput.value = ((mrp / (rate * gstFactor()) - 1) * 100).toFixed(2);
+  }
+  if (mrpInput && markupInput && rateInput) {
+    mrpInput.addEventListener('input', rateFromMarkup);
+    markupInput.addEventListener('input', rateFromMarkup);
+    rateInput.addEventListener('input', markupFromRate);
+    if (gstField) gstField.addEventListener('input', rateFromMarkup);
+  }
   const hsnSelect = document.getElementById('id_hsn');
   const gstInput = document.getElementById('id_gst_rate');
-  if (hsnSelect && gstInput) hsnSelect.addEventListener('change', () => { const match = hsnSelect.options[hsnSelect.selectedIndex]?.text.match(/\(([\d.]+)%\)$/); if (match) gstInput.value = match[1]; });
+  if (hsnSelect && gstInput) hsnSelect.addEventListener('change', () => { const match = hsnSelect.options[hsnSelect.selectedIndex]?.text.match(/\(([\d.]+)%\)$/); if (match) { gstInput.value = match[1]; rateFromMarkup(); } });
   function productEditor(initialTab) {
     return {tab: initialTab || 'details', saving: false, preview: '', photoName: '', photoBusy: false, master: null, masterLabel: '', masterValue: '', masterRate: '0', masterSelectId: '', masterSaving: false, masterError: '',
       openMaster(detail) { this.master = detail.kind; this.masterLabel = detail.label.charAt(0).toUpperCase() + detail.label.slice(1); this.masterSelectId = detail.selectId; this.masterValue = ''; this.masterRate = '0'; this.masterError = ''; },

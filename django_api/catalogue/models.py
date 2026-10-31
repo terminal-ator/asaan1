@@ -409,6 +409,16 @@ class Product(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Trade scheme shown to shops, e.g. 10 for 10% off. Applied on the Marg bill.",
     )
+    # Retailer markup on the price shops pay: MRP = rate incl. GST × (1 + markup %).
+    # Kept so a duplicated product only needs its MRP for the rate to follow.
+    markup_percent = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1000)],
+        help_text="Retailer markup on the rate incl. GST, e.g. 15 means MRP is 15% above what shops pay.",
+    )
     image = models.ImageField(upload_to="products/", blank=True)
     image_url = models.URLField(blank=True)
     active = models.BooleanField(default=True)
@@ -443,6 +453,15 @@ class Product(models.Model):
         pre-GST rate would count the GST as margin.
         """
         return max(0, self.mrp - self.rate_inclusive)
+
+    @property
+    def implied_markup_percent(self):
+        """The stored markup, or the one today's rate and MRP imply."""
+        if self.markup_percent is not None:
+            return self.markup_percent
+        if not self.mrp or not self.rate_inclusive:
+            return None
+        return round((Decimal(self.mrp) / Decimal(self.rate_inclusive) - 1) * 100, 2)
 
     @property
     def retail_margin_percent(self):

@@ -4,6 +4,8 @@ It reuses the product workspace endpoints for listing, editing and photos, and
 adds a create endpoint that takes the photo in the same request.
 """
 
+from decimal import Decimal, InvalidOperation
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
@@ -12,7 +14,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_POST
 from PIL import Image, UnidentifiedImageError
 
-from catalogue.models import Product
+from catalogue.models import HSN, Brand, Category, Company, Product
 from .product_media import ImageUpdateForm, optimized_image, product_data, staff_only
 from .quick_add import ProductQuickAddForm
 
@@ -106,3 +108,54 @@ def create_product(request):
         product.save()
     product = Product.objects.select_related("company", "brand", "category").get(pk=product.pk)
     return JsonResponse({"product": product_data(product)}, status=201)
+
+
+MASTERS = {"company": Company, "brand": Brand, "category": Category}
+
+
+@staff_only
+@require_POST
+def update_master(request, kind, master_id):
+    """Rename a company, brand or category, or correct an HSN code and its default GST."""
+    name = request.POST.get("name", "").strip()
+    if kind in MASTERS:
+        model = MASTERS[kind]
+        obj = model.objects.filter(pk=master_id).first()
+        if obj is None:
+            return JsonResponse({"error": f"That {kind} no longer exists."}, status=404)
+        if not name:
+            return JsonResponse({"error": "Enter a name."}, status=400)
+        if len(name) > model._meta.get_field("name").max_length:
+            return JsonResponse({"error": "That name is too long."}, status=400)
+        if model.objects.filter(name__iexact=name).exclude(pk=obj.pk).exists():
+            return JsonResponse({"error": f"“{name}” already exists. Pick it from the list instead."}, status=400)
+        obj.name = name
+        obj.save(update_fields=["name"])
+        return JsonResponse({"id": obj.pk, "name": obj.name})
+
+    if kind == "hsn":
+        obj = HSN.objects.filter(pk=master_id).first()
+        if obj is None:
+            return JsonResponse({"error": "That HSN no longer exists."}, status=404)
+        if not name:
+            return JsonResponse({"error": "Enter the HSN code."}, status=400)
+        if len(name) > HSN._meta.get_field("code").max_length:
+            return JsonResponse({"error": "That HSN code is too long."}, status=400)
+        try:
+            rate = Decimal(request.POST.get("default_gst_rate", obj.default_gst_rate))
+        except InvalidOperation:
+            return JsonResponse({"error": "GST must be a number."}, status=400)
+        if not Decimal("0") <= rate <= Decimal("100"):
+            return JsonResponse({"error": "GST must be between 0 and 100."}, status=400)
+        if HSN.objects.filter(code__iexact=name).exclude(pk=obj.pk).exists():
+            return JsonResponse({"error": f"HSN {name} already exists. Pick it from the list instead."}, status=400)
+        with transaction.atomic():
+            obj.code = name
+            obj.default_gst_rate = rate
+            obj.save(update_fields=["code", "default_gst_rate"])
+            # Products keep a copy of the code for slips and exports; keep it in step.
+            # Their GST % is left alone: a new default applies to products saved later.
+            Product.objects.filter(hsn=obj).update(hsn_code=obj.code)
+        return JsonResponse({"id": obj.pk, "code": obj.code, "description": obj.description, "default_gst_rate": str(obj.default_gst_rate)})
+
+    return JsonResponse({"error": "Unsupported master."}, status=400)

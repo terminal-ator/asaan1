@@ -5,7 +5,7 @@
   const RECENTS_KEY = 'asaan-staff-recents';
   const GST_ENTRY_KEY = 'asaan-staff-rate-includes-gst';
   const DETAIL_FIELDS = ['name', 'simple_name', 'company_name', 'brand_name', 'category_name', 'packing', 'unit'];
-  const PRICE_FIELDS = ['rate', 'mrp', 'hsn', 'gst_rate', 'scheme_percent', 'sku'];
+  const PRICE_FIELDS = ['rate', 'mrp', 'markup_percent', 'hsn', 'gst_rate', 'scheme_percent', 'sku'];
   const MASTER_KINDS = { company_name: 'company', brand_name: 'brand', category_name: 'category', hsn: 'hsn' };
   const DEFAULT_UNITS = ['case', 'box', 'pcs', 'pack', 'kg'];
   const GST_RATES = ['0', '5', '12', '18', '28'];
@@ -34,7 +34,7 @@
     return {
       sku: '', name: '', simple_name: '', company_name: '', brand_name: '', category_name: '',
       hsn: '', hsn_code: '', packing: '', unit: 'case', rate: '', mrp: '', gst_rate: '',
-      scheme_percent: '0', active: true, regular: false,
+      scheme_percent: '0', markup_percent: '', active: true, regular: false,
     };
   }
 
@@ -175,12 +175,15 @@
         const form = { ...emptyForm(), ...(source || {}) };
         if (mode === 'new') { form.sku = ''; form.active = true; }
         if (!form.unit) form.unit = 'case';
+        // Older products have no stored markup; show the one their rate and MRP imply.
+        const markupText = form.markup_percent !== '' && form.markup_percent !== null ? String(Number(form.markup_percent)) : this.impliedMarkup(form);
+        if (mode === 'new') form.markup_percent = markupText;
         this.editor = {
           mode, product, form, original: { ...form },
           copiedFrom: copyFrom ? (copyFrom.simple_name || copyFrom.name) : '',
           tab: 'details', errors: {}, error: '', saving: false,
           photo: { file: null, preview: '', remove: false, busy: false },
-          includesGst: false, rateText: form.rate,
+          includesGst: false, rateText: form.rate, markupText,
         };
         // Staff who type the rate shops pay keep doing so on the next product.
         let includesGst = false;
@@ -224,7 +227,7 @@
         delete this.editor.errors[field];
         if (field === 'hsn') {
           const hsn = this.lookups.hsn.find(entry => String(entry.id) === String(value));
-          if (hsn) { this.editor.form.gst_rate = String(Number(hsn.default_gst_rate)); this.editor.form.hsn_code = hsn.code; this.syncRate(); }
+          if (hsn) { this.editor.form.gst_rate = String(Number(hsn.default_gst_rate)); this.editor.form.hsn_code = hsn.code; this.onGstChange(); }
         }
       },
 
@@ -248,13 +251,49 @@
         try { localStorage.setItem(GST_ENTRY_KEY, editor.includesGst ? '1' : '0'); } catch (error) { /* private mode */ }
         if (editor.form.rate !== '') editor.rateText = editor.includesGst ? String(this.inclusive(editor.form)) : editor.form.rate;
       },
+      impliedMarkup(form) {
+        const mrp = Number(form.mrp), shopsPay = this.inclusive(form);
+        if (!(mrp > 0) || !(shopsPay > 0)) return '';
+        return String(round2((mrp / shopsPay - 1) * 100));
+      },
+      // MRP = rate incl. GST × (1 + markup %), so the rate follows the MRP.
+      applyMarkup() {
+        const editor = this.editor;
+        const mrp = Number(editor.form.mrp), markup = Number(editor.markupText);
+        if (editor.form.mrp === '' || editor.markupText === '' || !Number.isFinite(mrp) || !Number.isFinite(markup) || mrp <= 0 || markup < 0) return false;
+        const shopsPay = mrp / (1 + markup / 100);
+        const gst = Number(editor.form.gst_rate) || 0;
+        editor.form.rate = String(round2(shopsPay / (1 + gst / 100)));
+        editor.form.markup_percent = editor.markupText;
+        editor.rateTouched = false;
+        editor.rateText = editor.includesGst ? String(round2(shopsPay)) : editor.form.rate;
+        delete editor.errors.rate;
+        return true;
+      },
+      onMrpInput() {
+        if (!this.applyMarkup() && this.editor.form.rate !== '') this.onRateInput(false);
+      },
+      onMarkupInput() {
+        this.editor.form.markup_percent = this.editor.markupText;
+        this.applyMarkup();
+      },
+      onRateInput(typed = true) {
+        const editor = this.editor;
+        if (typed) editor.rateTouched = true;
+        this.syncRate();
+        const implied = this.impliedMarkup(editor.form);
+        if (implied !== '') { editor.markupText = implied; editor.form.markup_percent = implied; }
+      },
+      onGstChange() {
+        if (!this.applyMarkup()) this.syncRate();
+      },
       priceSummary() {
         const form = this.editor.form;
         if (form.rate === '' || !Number.isFinite(Number(form.rate))) return '';
         const shopsPay = this.inclusive(form);
         const mrp = Number(form.mrp) || 0;
         let text = `Shops pay ${money(shopsPay)} per ${form.unit || 'unit'} incl. GST`;
-        if (mrp > shopsPay) text += ` · margin ${money(mrp - shopsPay)} (${((mrp - shopsPay) / mrp * 100).toFixed(1)}%)`;
+        if (mrp > shopsPay) text += ` · markup ${((mrp / shopsPay - 1) * 100).toFixed(1)}% · retailer earns ${money(mrp - shopsPay)} (${((mrp - shopsPay) / mrp * 100).toFixed(1)}% of MRP)`;
         return text;
       },
 
@@ -311,9 +350,51 @@
       },
 
       // ---- Pickers for company, brand, category and HSN -----------------
-      openPicker(field, label) {
-        this.picker = { field, label, query: '', creating: false, gst: '18', error: '' };
+      openPicker(field, label, adding = false) {
+        this.picker = { field, label, query: '', creating: false, gst: '18', error: '', adding, editing: null };
         this.$nextTick(() => { const input = document.getElementById('picker-search'); if (input) input.focus(); });
+      },
+      startEditing(id) {
+        const item = (this.lookups[this.picker.field] || []).find(entry => String(entry.id) === String(id));
+        if (!item) return;
+        const hsn = this.picker.field === 'hsn';
+        this.picker.editing = { id: String(id), name: hsn ? item.code : item.name, gst: hsn ? String(Number(item.default_gst_rate)) : '', saving: false, error: '' };
+        this.$nextTick(() => { const input = document.getElementById('picker-edit'); if (input) { input.focus(); input.select(); } });
+      },
+      async saveEditing() {
+        const picker = this.picker;
+        const editing = picker && picker.editing;
+        if (!editing || editing.saving || !editing.name.trim()) return;
+        editing.saving = true;
+        editing.error = '';
+        const body = new URLSearchParams({ name: editing.name.trim() });
+        if (picker.field === 'hsn') body.set('default_gst_rate', editing.gst);
+        const url = config.masterUrl.replace('__kind__', MASTER_KINDS[picker.field]).replace('__id__', editing.id);
+        try {
+          const data = await this.request(url, { method: 'POST', body });
+          const list = this.lookups[picker.field];
+          const index = list.findIndex(entry => String(entry.id) === editing.id);
+          if (index !== -1) list.splice(index, 1, picker.field === 'hsn' ? { ...list[index], ...data } : { ...list[index], name: data.name });
+          picker.editing = null;
+          this.showToast('Saved. Product names update as the list refreshes.');
+          // Rows show company/brand/category names from the server.
+          this.load(true);
+        } catch (error) {
+          if (error.message !== 'signed-out') editing.error = error.message;
+          editing.saving = false;
+        }
+      },
+      startAdding() {
+        this.picker.adding = true;
+        this.picker.error = '';
+        this.$nextTick(() => { const input = document.getElementById('picker-search'); if (input) input.focus(); });
+      },
+      // The saved company/brand/category/HSN with exactly this name, ignoring case.
+      existingMatch() {
+        const picker = this.picker;
+        const name = picker ? picker.query.trim().toLowerCase() : '';
+        if (!name) return null;
+        return (this.lookups[picker.field] || []).find(item => String(picker.field === 'hsn' ? item.code : item.name).toLowerCase() === name) || null;
       },
       pickerItems() {
         const picker = this.picker;
@@ -337,6 +418,8 @@
         const picker = this.picker;
         const name = picker.query.trim();
         if (!name) return;
+        const existing = this.existingMatch();
+        if (existing) { this.pick(String(existing.id)); return; }
         picker.creating = true;
         picker.error = '';
         const body = new URLSearchParams({ kind: MASTER_KINDS[picker.field], name, default_gst_rate: picker.gst });
@@ -377,7 +460,7 @@
           let product;
           if (editor.mode === 'new') {
             const body = new FormData();
-            for (const key of ['name', 'simple_name', 'company_name', 'brand_name', 'category_name', 'packing', 'unit', 'rate', 'mrp', 'hsn', 'gst_rate', 'scheme_percent', 'sku']) body.append(key, editor.form[key] ?? '');
+            for (const key of ['name', 'simple_name', 'company_name', 'brand_name', 'category_name', 'packing', 'unit', 'rate', 'mrp', 'markup_percent', 'hsn', 'gst_rate', 'scheme_percent', 'sku']) body.append(key, editor.form[key] ?? '');
             if (editor.form.regular) body.append('regular', 'on');
             if (editor.photo.file) body.append('image', editor.photo.file);
             product = (await this.request(config.createUrl, { method: 'POST', body })).product;

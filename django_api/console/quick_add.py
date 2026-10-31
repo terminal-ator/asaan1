@@ -36,7 +36,7 @@ class ProductQuickAddForm(ProductForm):
     class Meta(ProductForm.Meta):
         fields = [
             "name", "simple_name", "company_name", "brand_name", "category_name",
-            "packing", "unit", "rate", "mrp", "hsn", "gst_rate", "scheme_percent", "sku", "image", "regular",
+            "packing", "unit", "rate", "mrp", "markup_percent", "hsn", "gst_rate", "scheme_percent", "sku", "image", "regular",
         ]
         labels = {"name": "Name (as in Marg)", "simple_name": "Name shops see"}
         help_texts = {"simple_name": "Optional. Defaults to the Marg name."}
@@ -85,6 +85,7 @@ def duplicate_initial(product):
         "unit": product.unit,
         "rate": Decimal(product.rate) / 100,
         "mrp": Decimal(product.mrp) / 100,
+        "markup_percent": product.implied_markup_percent,
         "hsn": product.hsn_id,
         "gst_rate": product.gst_rate,
         "scheme_percent": product.scheme_percent,

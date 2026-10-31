@@ -64,8 +64,9 @@
       <section x-show="tab === 'pricing'" x-cloak class="grid gap-4 lg:grid-cols-2">
         {% include 'console/_field.html' with field=form.packing %}
         {% include 'console/_field.html' with field=form.unit %}
-        {% include 'console/_field.html' with field=form.rate %}
         {% include 'console/_field.html' with field=form.mrp %}
+        {% include 'console/_field.html' with field=form.markup_percent %}
+        {% include 'console/_field.html' with field=form.rate %}
         {% include 'console/_field.html' with field=form.gst_rate %}
         {% include 'console/_field.html' with field=form.scheme_percent %}
       </section>
@@ -139,5 +140,5 @@
   </form>
 </main>
 <script src="{% static 'console/photo-shrink.js' %}?v=1"></script>
-<script src="{% static 'console/product-editor.js' %}?v=2" data-lookup-url="{% url 'console-quick-lookup' %}"></script>
+<script src="{% static 'console/product-editor.js' %}?v=3" data-lookup-url="{% url 'console-quick-lookup' %}"></script>
 {% endblock %}
