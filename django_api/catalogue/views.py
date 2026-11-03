@@ -216,8 +216,13 @@ def push_unsubscribe(request):
 @csrf_exempt
 @require_POST
 def create_order(request):
+    return place_order(request.body)
+
+
+def place_order(body, taken_by=None):
+    """Validate, price and save an order. Shared by the shop app and salesman mode."""
     try:
-        data = json.loads(request.body)
+        data = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return _error("invalid JSON")
 
@@ -308,6 +313,7 @@ def create_order(request):
                 or shop_data.get("address", ""),
                 place_of_supply=shop_data.get("state", "")
                 or _place_of_supply(shop_data.get("gstin", "")),
+                taken_by=taken_by,
             )
             OrderItem.objects.bulk_create(
                 [

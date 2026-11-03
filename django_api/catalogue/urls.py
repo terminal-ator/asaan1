@@ -1,5 +1,7 @@
 from django.urls import path
 
+from . import sales
+
 from .views import (
     catalogue,
     create_order,
@@ -16,4 +18,8 @@ urlpatterns = [
     path("push/key", push_key),
     path("push/subscribe", push_subscribe),
     path("push/unsubscribe", push_unsubscribe),
+    path("sales/me", sales.me),
+    path("sales/shops", sales.shops),
+    path("sales/shops/<int:shop_id>/history", sales.shop_history),
+    path("sales/orders", sales.create_order),
 ]

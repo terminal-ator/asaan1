@@ -1,8 +1,8 @@
-const CACHE = 'asaan-shell-v3'
+const CACHE = 'asaan-shell-v4'
 
 self.addEventListener('install', event => {
   self.skipWaiting()
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg'])))
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg', '/sales/', '/sales/manifest.webmanifest', '/sales/icon.svg'])))
 })
 
 self.addEventListener('activate', event => {
@@ -34,12 +34,16 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  // The app shell is fetched first and cached for offline use.
-  event.respondWith(fetch(request).then(response => {
+  // The app shell is fetched first and cached for offline use. Pages skip the
+  // browser's HTTP cache so a deploy shows up on the next open; the salesman
+  // app falls back to its own shell, not the shop's.
+  const shell = url.pathname.startsWith('/sales') ? '/sales/' : '/'
+  const fresh = request.mode === 'navigate' ? fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(request)
+  event.respondWith(fresh.then(response => {
     const copy = response.clone()
     caches.open(CACHE).then(cache => cache.put(request, copy))
     return response
-  }).catch(() => caches.match(request).then(cached => cached || caches.match('/'))))
+  }).catch(() => caches.match(request).then(cached => cached || caches.match(shell))))
 })
 
 // Order-status notifications from the server.

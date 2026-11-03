@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -514,6 +515,15 @@ class Order(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="orders",
+    )
+    # Set when a salesman took the order for the shop; empty when the shop
+    # ordered from its own app.
+    taken_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="orders_taken",
     )
 
     class Meta:

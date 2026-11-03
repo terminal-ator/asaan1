@@ -1,0 +1,12 @@
+{
+  "id": "/sales/",
+  "name": "Asaan Sales",
+  "short_name": "Asaan Sales",
+  "description": "Take orders for shops on your round.",
+  "start_url": "/sales/",
+  "scope": "/sales/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#33459e",
+  "icons": [{ "src": "/sales/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

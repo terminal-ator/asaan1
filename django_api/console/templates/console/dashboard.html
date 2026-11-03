@@ -87,7 +87,7 @@
             </td>
             <td class="px-4 py-4">
               <p>{{ order.shop.storeName }}</p>
-              <p class="mt-1 text-xs text-slate-500">{{ order.shop.mobile }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ order.shop.mobile }}</p>{% if order.taken_by %}<p class="mt-1 text-xs font-semibold text-brand-600">Taken by {{ order.taken_by.get_full_name|default:order.taken_by.get_username }}</p>{% endif %}
             </td>
             <td class="whitespace-nowrap px-4 py-4 font-semibold">
               ₹{{ order.total|rupees }}

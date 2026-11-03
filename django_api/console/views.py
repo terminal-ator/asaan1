@@ -53,7 +53,7 @@ from .master_forms import QuickProductForm, QuickSupplierForm
 
 @login_required
 def dashboard(request):
-    orders = Order.objects.prefetch_related("items").all()[:50]
+    orders = Order.objects.select_related("taken_by").prefetch_related("items").all()[:50]
     statuses = ["received", "processing", "completed", "cancelled"]
     counts = {
         status: Order.objects.filter(status=status).count()
@@ -72,7 +72,7 @@ def sales_register(request):
     status = request.GET.get("status", "")
     start = request.GET.get("from", "")
     end = request.GET.get("to", "")
-    records = Order.objects.prefetch_related("items").order_by("-created_at")
+    records = Order.objects.select_related("taken_by").prefetch_related("items").order_by("-created_at")
     if query:
         records = records.filter(Q(order_number__icontains=query) | Q(invoice_number__icontains=query) | Q(customer_gstin__icontains=query))
     if status: records = records.filter(status=status)

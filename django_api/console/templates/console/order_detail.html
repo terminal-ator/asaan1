@@ -12,6 +12,7 @@
       </h1>
       <p class="mt-1 text-sm text-slate-500">
         {{ order.created_at|date:'d M Y, H:i' }} · {{ order.get_status_display }}
+        {% if order.taken_by %} · Taken by {{ order.taken_by.get_full_name|default:order.taken_by.get_username }}{% endif %}
       </p>
       {% if order.loading %}
       <p class="mt-2 text-sm text-slate-500">Loading: <a class="font-semibold text-brand-600" href="{% url 'console-loading-detail' order.loading.id %}">{{ order.loading.loading_number }}</a></p>

@@ -13,7 +13,7 @@ asaan.in {
 
 	# The app shell and service worker must always revalidate so a deploy is
 	# picked up. Vite output is content-hashed; media and static files can cache.
-	@shell path / /index.html /sw.js /manifest.webmanifest
+	@shell path / /index.html /sw.js /manifest.webmanifest /sales/ /sales/index.html /sales/manifest.webmanifest
 	header @shell Cache-Control "no-cache"
 
 	@assets path /assets/*
@@ -68,6 +68,9 @@ asaan.in {
 		root * /var/lib/asaan/media
 		file_server
 	}
+
+	# The salesman app is the folder dist/sales/, served by the rule below.
+	redir /sales /sales/
 
 	# The PWA itself; unknown paths fall back to the shell for client routing.
 	handle {

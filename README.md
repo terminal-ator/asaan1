@@ -85,6 +85,15 @@ Nothing is deleted: order history keeps its copies, and **Quick add → Bring ba
 
 It needs the internet: its service worker only shows an offline notice, it never caches product data.
 
+## Salesman app
+
+**Asaan Sales** (`/sales/`, e.g. `https://orders.asaan.in/sales/`) is a separate installable app for staff to take orders for shops. It uses the shop app's ordering screens, but installs under its own name and icon, keeps its own cart and orders on the phone, and is never shown to shops. Staff sign in with their console account.
+
+- **Choose a shop** lists active shops, the ones that ordered most recently first, with search by name, owner, mobile or area. **+ New shop** adds one with the usual setup form.
+- The orange bar shows whose order is being taken; **Change shop** switches (the cart is cleared after a confirmation). **Order again** and **Usual** come from the shop's history on the server, including orders it placed from its own phone.
+- Orders are recorded with the salesman's name, shown as *Taken by* in the console. If the sign-in lapses, the order stays on the phone as *waiting to submit* and is sent after signing in again (menu → **Staff sign in again**).
+- **Sign out** (menu or the shop list) ends the staff session on that phone, so the next person signs in as themselves.
+
 ## Product photos
 
 Adding a photo is built for a phone: open a product's **Media** tab — or use the **Photo** shortcut in the products list — and tap **Take photo** to open the camera directly, or **Choose from gallery**. The picture is resized on the device before upload (max 1400 px, JPEG), so it saves quickly on mobile data, and the products list shows a thumbnail for each item. Django serves `/media/` while `DEBUG` is on; Caddy serves it in production.
@@ -105,6 +114,7 @@ Schemes do not stack: each product gets the single best scheme running today. Th
 - `POST /api/orders` — accepts an order snapshot; repeated `clientOrderId` values are idempotent.
 - `GET /api/orders/status?ids=…` — console status per `clientOrderId`, for the shop's order list.
 - `GET /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` — web-push registration for order-status notifications.
+- `GET /api/sales/me`, `GET /api/sales/shops?q=…`, `GET /api/sales/shops/<id>/history`, `POST /api/sales/orders` — salesman mode; staff sign-in required and the order post is CSRF checked.
 - `GET /healthz` — liveness probe; returns 503 when the database is unreachable.
 - `/admin/` — Django admin, including the Product CSV import action.
 - `/console/` — staff console.

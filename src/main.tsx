@@ -14,10 +14,15 @@ import './cart-button.css'
 import './cart-actions.css'
 import './product-images.css'
 import './categories.css'
+import './sales.css'
 
 // Same-origin by default: Vite proxies /api and /media to Django while
 // developing, and in production the reverse proxy serves the built PWA next to Django.
 const apiURL = import.meta.env.VITE_API_URL ?? ''
+// /sales/ is the salesman app: the same ordering screens, installed separately,
+// with its own storage and a staff sign-in. Shops never see any of it.
+const SALES_APP = /^\/sales(\/|$)/.test(window.location.pathname)
+if (window.location.pathname === '/sales') window.location.replace(`/sales/${window.location.search}`)
 
 type CatalogueView = 'all' | 'in-cart' | 'liked' | 'new' | 'regular' | 'usual' | 'deals' | 'discover' | 'recommended'
 const PRODUCT_ROW_HEIGHT = 92
@@ -26,10 +31,14 @@ type Product = { id: string; sku: string; name: string; simpleName?: string; com
 // `scheme` is the scheme % when the line was priced; refreshed with the catalogue.
 type CartItem = Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'rate'> & { quantity: number; packing?: string; scheme?: number }
 type QuantityTarget = Omit<CartItem, 'quantity'> & { simpleName?: string; schemePercent?: string }
-type Shop = { storeName: string; customerName: string; mobile: string; shopType?: string; bundleIds?: string[]; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
+type Shop = { id?: number; storeName: string; customerName: string; mobile: string; shopType?: string; bundleIds?: string[]; gstin?: string; address?: string; latitude?: number; longitude?: number; locationAccuracy?: number }
 type CatalogueMetadata = { id: 'current'; bundles: ProductBundle[]; shopTypes: ShopType[] }
 type Deal = { weekday: number; productId: string; percent: string; note: string }
-type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string; serverStatus?: string }
+type LocalOrder = { clientOrderId: string; shop: Shop; items: CartItem[]; notes: string; total: number; createdAt: string; status: 'pending' | 'submitted' | 'failed'; orderNumber?: string; error?: string; serverStatus?: string; takenBy?: string }
+// Salesman mode: a signed-in staff member takes orders on a shop's behalf.
+type Salesman = { username: string; name: string }
+type SalesShop = Shop & { id?: number; orderCount?: number; lastOrderAt?: string | null }
+type ShopHistory = { lastOrder: { orderNumber: string; createdAt: string; items: { productId: string; unit: string; quantity: number }[] } | null; usual: string[] }
 
 class AsaanDB extends Dexie {
   products!: EntityTable<Product, 'id'>
@@ -37,15 +46,16 @@ class AsaanDB extends Dexie {
   orders!: EntityTable<LocalOrder, 'clientOrderId'>
   likes!: EntityTable<{ id: string }, 'id'>
   metadata!: EntityTable<CatalogueMetadata, 'id'>
-  constructor() {
-    super('asaan')
+  constructor(name: string) {
+    super(name)
     this.version(1).stores({ products: 'id, sku, name, company, brand, category', cart: 'id', orders: 'clientOrderId, status, createdAt' })
     // Liked products live on the device: every shop keeps its own shortlist.
     this.version(2).stores({ products: 'id, sku, name, company, brand, category', cart: 'id', orders: 'clientOrderId, status, createdAt', likes: 'id' })
     this.version(3).stores({ metadata: 'id' })
   }
 }
-const db = new AsaanDB()
+// Separate databases so a phone used as both apps keeps two carts and order lists.
+const db = new AsaanDB(SALES_APP ? 'asaan-sales' : 'asaan')
 const money = (paise: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(paise / 100)
 const imageSource = (product: Product) => product.imageUrl?.startsWith('/') ? `${apiURL}${product.imageUrl}` : product.imageUrl
 const displayName = (product: Product) => product.simpleName || product.name
@@ -79,6 +89,11 @@ const urlBase64ToUint8Array = (base64: string) => {
 // A shop profile without a name or mobile is useless for billing, so treat it
 // as not set up and ask for the details again.
 const hasShopDetails = (shop: Shop | null): shop is Shop => Boolean(shop?.storeName?.trim() && shop?.mobile?.trim())
+const sameShop = (a: Shop, b: Shop) => a.mobile === b.mobile && a.storeName === b.storeName
+const readJSON = <T,>(key: string): T | null => { try { return JSON.parse(localStorage.getItem(key) || 'null') as T | null } catch { return null } }
+// Django wants the CSRF cookie echoed back on signed-in requests.
+const csrfToken = () => document.cookie.split('; ').find(part => part.startsWith('csrftoken='))?.slice('csrftoken='.length) ?? ''
+const salesLoginURL = () => `${apiURL}/admin/login/?next=${encodeURIComponent('/sales/')}`
 // Used by the header menu: drop the offline copies and start clean.
 async function clearCacheAndReload() {
   try {
@@ -88,13 +103,19 @@ async function clearCacheAndReload() {
 }
 
 function App() {
-  const [shop, setShop] = useState<Shop | null>(() => JSON.parse(localStorage.getItem('asaan-shop') || 'null'))
+  const [ownShop, setOwnShop] = useState<Shop | null>(() => SALES_APP ? null : readJSON<Shop>('asaan-shop'))
+  const [salesman, setSalesman] = useState<Salesman | null>(() => SALES_APP ? readJSON<Salesman>('asaan-salesman') : null)
+  const [salesShop, setSalesShop] = useState<SalesShop | null>(() => SALES_APP ? readJSON<SalesShop>('asaan-sales-shop') : null)
+  const [salesGate, setSalesGate] = useState<'checking' | 'signed-out' | 'offline'>('checking')
+  const [shopHistory, setShopHistory] = useState<ShopHistory | null>(null)
+  // Everything below orders for this shop: the device's own, or the one the salesman is visiting.
+  const shop = salesman ? salesShop : ownShop
   const [products, setProducts] = useState<Product[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [query, setQuery] = useState('')
   const [company, setCompany] = useState('')
   const [brand, setBrand] = useState('')
-  const [screen, setScreen] = useState<'catalogue' | 'cart' | 'orders' | 'setup'>('catalogue')
+  const [screen, setScreen] = useState<'catalogue' | 'cart' | 'orders' | 'setup' | 'shops'>('catalogue')
   const [message, setMessage] = useState('')
   const [likes, setLikes] = useState<string[]>([])
   const [catalogueView, setCatalogueView] = useState<CatalogueView>('all')
@@ -125,6 +146,8 @@ function App() {
       await refreshStatuses()
       await checkPush()
     })()
+    // First open of the salesman app, or back from the staff sign-in page.
+    if (SALES_APP && !readJSON<Salesman>('asaan-salesman')) void signIn()
     // A cache-first service worker is useful after deployment, but makes local
     // development appear stale after an edit.
     if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js')
@@ -262,10 +285,64 @@ function App() {
       setCatalogueView('all')
     }
     const profile = { ...saved, bundleIds: availableIds }
+    if (salesman) { await chooseShop(profile); return }
     localStorage.setItem('asaan-shop', JSON.stringify(profile))
-    setShop(profile)
+    setOwnShop(profile)
     setScreen('catalogue')
   }
+
+  async function signIn() {
+    setSalesGate('checking')
+    try {
+      const response = await fetch(`${apiURL}/api/sales/me`, { credentials: 'same-origin' })
+      if (response.status === 403 || response.status === 401) { setSalesGate('signed-out'); return }
+      if (!response.ok) throw new Error()
+      const me = await response.json() as Salesman
+      localStorage.setItem('asaan-salesman', JSON.stringify(me))
+      setSalesman(me)
+      setScreen('shops')
+    } catch { setSalesGate('offline') }
+  }
+
+  async function signOut() {
+    const pending = history.filter(order => order.status === 'pending').length
+    const warning = pending
+      ? `${pending} order${pending === 1 ? ' has' : 's have'} not been sent yet and will stay on this phone until someone signs in again. Sign out anyway?`
+      : cartRef.current.length ? `Sign out? The cart for ${salesShop?.storeName ?? 'this shop'} will be cleared.` : 'Sign out of the salesman app on this phone?'
+    if (!window.confirm(warning)) return
+    await saveCart([])
+    localStorage.removeItem('asaan-salesman')
+    localStorage.removeItem('asaan-sales-shop')
+    // End the staff session too, so the next person on this phone signs in as themselves.
+    try { await fetch(`${apiURL}/admin/logout/`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrfToken() } }) } catch { /* offline: the session ends on its own */ }
+    setSalesman(null)
+    setSalesShop(null)
+    setShopHistory(null)
+    setCatalogueView('all')
+    setScreen('catalogue')
+    setSalesGate('signed-out')
+  }
+
+  async function chooseShop(next: SalesShop) {
+    if (salesShop && !sameShop(salesShop, next) && cartRef.current.length && !window.confirm(`Clear the cart for ${salesShop.storeName} and start an order for ${next.storeName}?`)) return
+    if (!salesShop || !sameShop(salesShop, next)) await saveCart([])
+    localStorage.setItem('asaan-sales-shop', JSON.stringify(next))
+    setSalesShop(next)
+    setCatalogueView('all')
+    setScreen('catalogue')
+  }
+
+  // What the visited shop bought before, from any device it ordered on.
+  useEffect(() => {
+    setShopHistory(null)
+    if (!salesman || !salesShop?.id) return
+    let cancelled = false
+    void fetch(`${apiURL}/api/sales/shops/${salesShop.id}/history`, { credentials: 'same-origin' })
+      .then(response => response.ok ? response.json() as Promise<ShopHistory> : null)
+      .then(payload => { if (!cancelled && payload) setShopHistory(payload) })
+      .catch(() => { /* offline: the device's own orders still show */ })
+    return () => { cancelled = true }
+  }, [salesman, salesShop?.id, history.length])
 
   async function toggleLike(productId: string) {
     // The database is the source of truth so two quick taps cannot race.
@@ -311,7 +388,16 @@ function App() {
   async function sendOrder(order: LocalOrder, showResult = true) {
     try {
       const payload = { ...order, items: order.items.map(item => ({ productId: item.id, sku: item.sku, name: item.name, unit: item.unit, quantity: item.quantity, rate: item.rate })) }
-      const response = await fetch(`${apiURL}/api/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const response = order.takenBy
+        ? await fetch(`${apiURL}/api/sales/orders`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() }, body: JSON.stringify(payload) })
+        : await fetch(`${apiURL}/api/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      // A salesman whose sign-in lapsed keeps the order and signs in again.
+      if (order.takenBy && response.status === 403) {
+        await db.orders.put({ ...order, status: 'pending', error: 'Sign in again to send this order.' })
+        if (showResult) setMessage('Your staff sign-in has ended. The order is saved; sign in again from the menu to send it.')
+        await refreshStatuses()
+        return
+      }
       if (!response.ok) {
         let detail = `Server rejected the order (${response.status}).`
         try {
@@ -326,7 +412,7 @@ function App() {
         throw new Error(detail)
       }
       const receipt = await response.json() as { orderNumber: string }
-      const saved = { ...order, status: 'submitted' as const, orderNumber: receipt.orderNumber }
+      const saved = { ...order, status: 'submitted' as const, orderNumber: receipt.orderNumber, error: undefined }
       await db.orders.put(saved)
       if (showResult) setMessage(`Order ${receipt.orderNumber} submitted successfully.`)
     } catch {
@@ -339,7 +425,7 @@ function App() {
 
   async function placeOrder() {
     if (!hasShopDetails(shop) || cart.length === 0) return
-    const order: LocalOrder = { clientOrderId: crypto.randomUUID(), shop, items: cart, notes: '', total, createdAt: new Date().toISOString(), status: 'pending' }
+    const order: LocalOrder = { clientOrderId: crypto.randomUUID(), shop, items: cart, notes: '', total, createdAt: new Date().toISOString(), status: 'pending', ...(salesman ? { takenBy: salesman.username } : {}) }
     await db.orders.put(order)
     await saveCart([])
     setScreen('orders')
@@ -419,11 +505,26 @@ function App() {
     const weekday = (new Date().getDay() + 6) % 7
     return dealEntries.find(entry => entry.deal.weekday === weekday) ?? null
   }, [dealEntries])
+  // A salesman's device holds orders for many shops; only this shop's count.
+  const shopOrders = useMemo(() => shop ? history.filter(order => !salesman || sameShop(order.shop, shop)) : history, [history, shop, salesman])
+  // The server knows orders the shop placed itself, so prefer its last order when it is newer.
+  const lastOrder = useMemo<LocalOrder | null>(() => {
+    const local = shopOrders[0] ?? null
+    const remote = shopHistory?.lastOrder
+    if (!salesman || !shop || !remote || (local && Date.parse(local.createdAt) >= Date.parse(remote.createdAt))) return local
+    const byId = new Map(products.map(product => [product.id, product]))
+    const items = remote.items.flatMap(item => {
+      const product = byId.get(item.productId)
+      return product && product.unit === item.unit ? [{ id: product.id, sku: product.sku, name: displayName(product), unit: product.unit, rate: inclusiveRate(product), quantity: item.quantity, packing: product.packing, scheme: schemeOf(product) }] : []
+    })
+    return items.length ? { clientOrderId: remote.orderNumber, orderNumber: remote.orderNumber, shop, items, notes: '', total: cartTotals(items).total, createdAt: remote.createdAt, status: 'submitted' } : local
+  }, [shopOrders, shopHistory, salesman, shop, products])
   // What this shop actually buys, ranked from its own order history.
   const usual = useMemo(() => {
     const byId = new Map(products.map(product => [product.id, product]))
+    if (salesman && shopHistory?.usual.length) return shopHistory.usual.flatMap(id => byId.get(id) ?? [])
     const bought = new Map<string, number>()
-    for (const order of history) {
+    for (const order of shopOrders) {
       for (const item of order.items) bought.set(item.id, (bought.get(item.id) ?? 0) + item.quantity)
     }
     return [...bought.entries()]
@@ -431,21 +532,24 @@ function App() {
       .map(([id]) => byId.get(id))
       .filter((product): product is Product => Boolean(product))
       .slice(0, 8)
-  }, [history, products])
+  }, [shopOrders, shopHistory, salesman, products])
 
-  if (!hasShopDetails(shop) || screen === 'setup') return <Registration initial={shop} products={products} bundles={bundles} shopTypes={shopTypes} loading={catalogueLoading} onSave={completeSetup} onCancel={hasShopDetails(shop) ? () => setScreen('catalogue') : undefined} />
+  if (SALES_APP && !salesman) return <SalesSignIn gate={salesGate} onRetry={() => void signIn()} />
+  if (salesman && screen !== 'setup' && (screen === 'shops' || !hasShopDetails(shop))) return <ShopPicker salesman={salesman} current={salesShop} message={message} onDismiss={() => setMessage('')} onPick={next => void chooseShop(next)} onNew={() => { setSalesShop(null); setScreen('setup') }} onBack={hasShopDetails(salesShop) ? () => setScreen('catalogue') : undefined} onSignOut={() => void signOut()} />
+  if (!hasShopDetails(shop) || screen === 'setup') return <Registration initial={shop} salesman={Boolean(salesman)} products={products} bundles={bundles} shopTypes={shopTypes} loading={catalogueLoading} onSave={completeSetup} onCancel={salesman ? () => setScreen('shops') : hasShopDetails(shop) ? () => setScreen('catalogue') : undefined} />
   return <main className={screen === 'catalogue' ? 'catalogue' : undefined}>
-    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{shop.storeName}</span></div></div><div className="header-actions">{supportPhone && <a className="quiet" href={`https://wa.me/${supportPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Help</a>}<button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu onLogout={() => void logOut()} onSetup={() => setScreen('setup')} callHref={supportPhone ? `tel:${supportPhone}` : undefined} /></div></header>
+    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{salesman ? `Salesman · ${salesman.name}` : shop.storeName}</span></div></div><div className="header-actions">{supportPhone && <a className="quiet" href={`https://wa.me/${supportPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Help</a>}<button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu salesman={Boolean(salesman)} onLogout={() => void (salesman ? signOut() : logOut())} onSetup={() => setScreen('setup')} onSignIn={salesman ? () => { window.location.href = salesLoginURL() } : undefined} callHref={supportPhone ? `tel:${supportPhone}` : undefined} /></div></header>
+    {salesman && <div className="sales-bar"><span>Order for <b>{shop.storeName}</b><small>{[shop.customerName, shop.mobile].filter(Boolean).join(' · ')}</small></span><button onClick={() => setScreen('shops')}>Change shop</button></div>}
     {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
-    {screen === 'catalogue' && <Catalogue recommended={recommended} onSetup={() => setScreen('setup')} products={browse} newProducts={newProducts} regular={regularProducts} usual={usual} deals={dealEntries} todayDeal={todayDeal} lastOrder={history[0] ?? null} onRepeat={order => void repeatOrder(order)} discover={discover} view={catalogueView} setView={setCatalogueView} cart={cart} likes={likes} shuffleDiscover={() => setDiscoverSeed(seed => seed + 1)} toggleLike={id => void toggleLike(id)} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
+    {screen === 'catalogue' && <Catalogue recommended={recommended} onSetup={() => setScreen('setup')} products={browse} newProducts={newProducts} regular={regularProducts} usual={usual} deals={dealEntries} todayDeal={todayDeal} lastOrder={lastOrder} onRepeat={order => void repeatOrder(order)} discover={discover} view={catalogueView} setView={setCatalogueView} cart={cart} likes={likes} shuffleDiscover={() => setDiscoverSeed(seed => seed + 1)} toggleLike={id => void toggleLike(id)} query={query} setQuery={setQuery} company={company} setCompany={setCompany} brand={brand} setBrand={setBrand} companies={companies} brands={brands} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'cart' && <Cart cart={cart} total={total} savings={savings} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
-    {screen === 'orders' && <Orders orders={history} supportPhone={supportPhone} pushAvailable={pushAvailable} pushEnabled={pushEnabled} onEnablePush={() => void enableNotifications()} onShare={shareOrder} onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} onChanged={loadHistory} />}
+    {screen === 'orders' && <Orders orders={shopOrders} supportPhone={supportPhone} pushAvailable={pushAvailable && !salesman} pushEnabled={pushEnabled} onEnablePush={() => void enableNotifications()} onShare={shareOrder} onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} onChanged={loadHistory} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
   </main>
 }
 
-function Registration({ initial, products, bundles, shopTypes, loading, onSave, onCancel }: {
-  initial?: Shop | null; products: Product[]; bundles: ProductBundle[]; shopTypes: ShopType[]; loading: boolean
+function Registration({ initial, salesman = false, products, bundles, shopTypes, loading, onSave, onCancel }: {
+  initial?: Shop | null; salesman?: boolean; products: Product[]; bundles: ProductBundle[]; shopTypes: ShopType[]; loading: boolean
   onSave: (shop: Shop, selectedIds: string[]) => Promise<void>
   onCancel?: () => void
 }) {
@@ -489,8 +593,8 @@ function Registration({ initial, products, bundles, shopTypes, loading, onSave, 
   }
   return <main className="registration">
     <div className="brand"><span className="logo" aria-hidden="true">A</span>Asaan</div>
-    <h1>Set up your shop</h1>
-    <p>Save your details on this device to make future orders quick. They are included only when you submit an order.</p>
+    <h1>{salesman ? (initial ? 'Shop details' : 'Add a shop') : 'Set up your shop'}</h1>
+    <p>{salesman ? 'Enter the shop you are visiting. Its orders are recorded as taken by you.' : 'Save your details on this device to make future orders quick. They are included only when you submit an order.'}</p>
     <form onSubmit={submit} noValidate>
       <div className="setup-tabs" role="tablist" aria-label="Shop setup" onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -546,9 +650,63 @@ function Registration({ initial, products, bundles, shopTypes, loading, onSave, 
   </main>
 }
 
+// The salesman app's front door: staff sign in with their console account.
+function SalesSignIn({ gate, onRetry }: { gate: 'checking' | 'signed-out' | 'offline'; onRetry: () => void }) {
+  return <main className="registration sales-sign-in">
+    <div className="brand"><span className="logo" aria-hidden="true">A</span>Asaan Sales</div>
+    <h1>Take orders for shops</h1>
+    {gate === 'checking' && <p role="status">Checking your sign-in…</p>}
+    {gate === 'signed-out' && <><p>Sign in with your staff account. Orders you take are recorded in your name.</p><a className="primary" href={salesLoginURL()}>Sign in</a></>}
+    {gate === 'offline' && <><p>Could not reach Asaan. Check the connection and try again.</p><button className="primary" onClick={onRetry}>Try again</button></>}
+  </main>
+}
+
+// Salesman mode: choose the shop being visited. Shops that ordered recently come first.
+function ShopPicker({ salesman, current, message, onDismiss, onPick, onNew, onBack, onSignOut }: { salesman: Salesman; current: SalesShop | null; message: string; onDismiss: () => void; onPick: (shop: SalesShop) => void; onNew: () => void; onBack?: () => void; onSignOut: () => void }) {
+  const [query, setQuery] = useState('')
+  const [shops, setShops] = useState<SalesShop[]>([])
+  const [state, setState] = useState<'loading' | 'ready' | 'offline' | 'signed-out'>('loading')
+  useEffect(() => {
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setState(value => value === 'ready' ? value : 'loading')
+      fetch(`${apiURL}/api/sales/shops?q=${encodeURIComponent(query.trim())}`, { credentials: 'same-origin' })
+        .then(async response => {
+          if (cancelled) return
+          if (response.status === 403) { setState('signed-out'); return }
+          if (!response.ok) throw new Error()
+          setShops((await response.json() as { shops: SalesShop[] }).shops)
+          setState('ready')
+        })
+        .catch(() => { if (!cancelled) setState('offline') })
+    }, query ? 250 : 0)
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [query])
+  const visited = (shop: SalesShop) => shop.lastOrderAt ? `Last order ${new Date(shop.lastOrderAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No orders yet'
+  return <main className="shop-picker">
+    <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Choose a shop</strong><span>Salesman · {salesman.name}</span></div></div><div className="header-actions">{onBack && <button className="quiet" onClick={onBack}>Back</button>}<button className="quiet" onClick={onSignOut}>Sign out</button></div></header>
+    {message && <div className="notice">{message}<button onClick={onDismiss}>×</button></div>}
+    <div className="shop-picker-search">
+      <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search shop, owner, mobile or area" enterKeyHint="search" aria-label="Search shops" />
+      <button className="primary" onClick={onNew}>+ New shop</button>
+    </div>
+    {state === 'signed-out' && <p className="shop-picker-note">Your staff sign-in has ended. <a href={salesLoginURL()}>Sign in again</a>.</p>}
+    {state === 'offline' && <p className="shop-picker-note">Could not load shops. Check the connection{current ? ', or carry on with ' + current.storeName : ''}.</p>}
+    {state === 'loading' && !shops.length && <p className="shop-picker-note">Loading shops…</p>}
+    {state === 'ready' && !shops.length && <p className="shop-picker-note">{query ? 'No shop matches. Add it as a new shop.' : 'No shops yet. Add the first one.'}</p>}
+    <ul className="shop-list">
+      {shops.map(shop => <li key={shop.id}><button className={current?.id === shop.id ? 'current' : undefined} onClick={() => onPick(shop)}>
+        <span className="shop-avatar" aria-hidden="true">{brandInitials(shop.storeName)}</span>
+        <span className="shop-copy"><b>{shop.storeName}</b><small>{[shop.customerName, shop.mobile].filter(Boolean).join(' · ')}</small>{shop.address && <small>{shop.address}</small>}</span>
+        <span className="shop-meta">{visited(shop)}{current?.id === shop.id && <em>Current</em>}</span>
+      </button></li>)}
+    </ul>
+  </main>
+}
+
 function Field({ label, value, onChange, required = false, maxLength, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; maxLength?: number; type?: string }) { return <label>{label}{required && <span className="required-mark"> *</span>}<input type={type} value={value} onChange={event => onChange(event.target.value)} required={required} maxLength={maxLength} /></label> }
 
-function Menu({ onLogout, onSetup, callHref }: { onLogout: () => void; onSetup: () => void; callHref?: string }) {
+function Menu({ salesman = false, onLogout, onSetup, onSignIn, callHref }: { salesman?: boolean; onLogout: () => void; onSetup: () => void; onSignIn?: () => void; callHref?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -562,11 +720,12 @@ function Menu({ onLogout, onSetup, callHref }: { onLogout: () => void; onSetup: 
   return <div className="menu" ref={ref}>
     <button className="quiet menu-button" aria-label="More options" aria-expanded={open} onClick={() => setOpen(value => !value)}>⋮</button>
     {open && <div className="menu-list" role="menu">
-      <button role="menuitem" onClick={() => { setOpen(false); onSetup() }}>Shop details &amp; bundles</button>
+      <button role="menuitem" onClick={() => { setOpen(false); onSetup() }}>{salesman ? 'Edit this shop' : <>Shop details &amp; bundles</>}</button>
+      {onSignIn && <button role="menuitem" onClick={() => { setOpen(false); onSignIn() }}>Staff sign in again</button>}
       <button role="menuitem" onClick={() => window.location.reload()}>Refresh</button>
       <button role="menuitem" onClick={() => void clearCacheAndReload()}>Clear cache &amp; reload</button>
       {callHref && <a role="menuitem" href={callHref}>Call support</a>}
-      <button role="menuitem" className="danger" onClick={onLogout}>Log out</button>
+      <button role="menuitem" className="danger" onClick={onLogout}>{salesman ? 'Sign out' : 'Log out'}</button>
     </div>}
   </div>
 }

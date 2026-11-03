@@ -1,0 +1,78 @@
+/* Salesman mode: the shop picker and the "order for" bar. */
+.sales-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 14px;
+}
+.sales-bar span { min-width: 0; }
+.sales-bar b { color: var(--ink); }
+.sales-bar small { display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sales-bar button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--warning);
+  font: inherit;
+  font-weight: 700;
+}
+
+.sales-sign-in .primary { display: block; margin-top: 24px; text-align: center; text-decoration: none; }
+
+.shop-picker-search { display: flex; gap: 8px; margin-bottom: 12px; }
+.shop-picker-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  font: inherit;
+  font-size: 16px;
+}
+.shop-picker-search .primary { flex-shrink: 0; width: auto; min-height: 48px; margin: 0; padding: 0 16px; }
+.shop-picker-note { padding: 16px; color: var(--muted); text-align: center; }
+.shop-picker-note a { color: var(--brand); font-weight: 700; }
+
+.shop-list { margin: 0; padding: 0; list-style: none; border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-soft); overflow: hidden; }
+.shop-list li + li { border-top: 1px solid var(--line); }
+.shop-list button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.shop-list button:active, .shop-list button.current { background: var(--brand-soft); }
+.shop-avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-weight: 800;
+}
+.shop-copy { flex: 1; min-width: 0; }
+.shop-copy b { display: block; }
+.shop-copy small { display: block; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-meta { flex-shrink: 0; color: var(--faint); font-size: 12px; text-align: right; }
+.shop-meta em { display: block; color: var(--brand); font-style: normal; font-weight: 700; }

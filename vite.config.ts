@@ -23,10 +23,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // The shop app at / and the salesman app at /sales/ share one bundle.
+    build: { rollupOptions: { input: { main: 'index.html', sales: 'sales/index.html' } } },
     server: {
       proxy: {
         '/api': 'http://localhost:8081',
         '/media': 'http://localhost:8081',
+        // Salesman mode signs in through the Django admin login.
+        '/admin': 'http://localhost:8081',
+        '/static': 'http://localhost:8081',
       },
     },
   }
