@@ -49,8 +49,11 @@ Staff configure shop-specific starter bundles at **Console → Bundles**
 quantities, and mark the bundle active. Bundles must contain at least one product;
 inactive products and empty bundles are excluded from the PWA.
 
-Shop setup has **Shop details** and **Recommended bundles** tabs. Users can choose
-multiple bundles for their shop type or skip them. Their choices feed the
+First-time setup asks only for the shop name and mobile number; the shop type
+(tapped as a chip), owner name, GSTIN, address and location are optional. Every
+bundle for the chosen shop type is picked automatically. Later, **Shop details &
+bundles** in the menu has **Shop details** and **Recommended bundles** tabs to
+change any of it, including which bundles to keep. The chosen bundles feed the
 **Recommended** catalogue pill, which shows each product once and supports the
 usual search and filters. Users add products to their cart as they browse.
 Selections and bundle data are saved on the device for offline use. Existing users

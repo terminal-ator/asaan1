@@ -30,3 +30,16 @@
 .setup-skip { display: block; width: 100%; margin-top: 6px; }
 .setup-actions button:disabled { opacity: .6; cursor: wait; }
 @media (min-width: 640px) { .setup-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+/* First-time setup: two fields, shop-type chips, the rest folded away. */
+.quick-setup form > label { display: block; margin-top: 14px; }
+.quick-setup input { font-size: 16px; min-height: 48px; }
+.type-chips { margin: 18px 0 0; padding: 0; border: 0; }
+.type-chips legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+.type-chips div { display: flex; flex-wrap: wrap; gap: 8px; }
+.type-chips button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--body); font: inherit; font-size: 14px; }
+.type-chips button.selected { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 650; }
+.more-details { margin: 20px 0 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.more-details summary { min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--brand); font-weight: 650; font-size: 14px; }
+.more-details > label { display: block; margin-top: 10px; }
+.more-details .location-card { margin-top: 14px; }

@@ -275,12 +275,14 @@ function App() {
     finally { setCatalogueLoading(false) }
   }
 
-  async function completeSetup(saved: Shop, selectedIds: string[]) {
-    const availableIds = resolveBundles(bundles, products, saved.shopType ?? '')
-      .filter(bundle => selectedIds.includes(bundle.id)).map(bundle => bundle.id)
+  // `firstTime` is the short setup: it takes every bundle for the shop type
+  // without asking, so a new shop starts with Recommended filled in.
+  async function completeSetup(saved: Shop, selectedIds: string[], firstTime = false) {
+    const forType = resolveBundles(bundles, products, saved.shopType ?? '')
+    const availableIds = (firstTime ? forType : forType.filter(bundle => selectedIds.includes(bundle.id))).map(bundle => bundle.id)
     if (availableIds.length) {
       setCatalogueView('recommended')
-      setMessage('Your selected bundles are saved. Find their products in Recommended.')
+      setMessage(firstTime ? 'Welcome! Recommended shows popular products for your shop. Everything else is in All.' : 'Your selected bundles are saved. Find their products in Recommended.')
     } else {
       setCatalogueView('all')
     }
@@ -536,7 +538,8 @@ function App() {
 
   if (SALES_APP && !salesman) return <SalesSignIn gate={salesGate} onRetry={() => void signIn()} />
   if (salesman && screen !== 'setup' && (screen === 'shops' || !hasShopDetails(shop))) return <ShopPicker salesman={salesman} current={salesShop} message={message} onDismiss={() => setMessage('')} onPick={next => void chooseShop(next)} onNew={() => { setSalesShop(null); setScreen('setup') }} onBack={hasShopDetails(salesShop) ? () => setScreen('catalogue') : undefined} onSignOut={() => void signOut()} />
-  if (!hasShopDetails(shop) || screen === 'setup') return <Registration initial={shop} salesman={Boolean(salesman)} products={products} bundles={bundles} shopTypes={shopTypes} loading={catalogueLoading} onSave={completeSetup} onCancel={salesman ? () => setScreen('shops') : hasShopDetails(shop) ? () => setScreen('catalogue') : undefined} />
+  if (!hasShopDetails(shop)) return <QuickSetup salesman={Boolean(salesman)} shopTypes={shopTypes} onSave={(saved, ids) => completeSetup(saved, ids, true)} onCancel={salesman ? () => setScreen('shops') : undefined} />
+  if (screen === 'setup') return <Registration initial={shop} salesman={Boolean(salesman)} products={products} bundles={bundles} shopTypes={shopTypes} loading={catalogueLoading} onSave={completeSetup} onCancel={salesman ? () => setScreen('shops') : hasShopDetails(shop) ? () => setScreen('catalogue') : undefined} />
   return <main className={screen === 'catalogue' ? 'catalogue' : undefined}>
     <header><div className="header-brand"><span className="logo" aria-hidden="true">A</span><div><strong>Asaan</strong><span>{salesman ? `Salesman · ${salesman.name}` : shop.storeName}</span></div></div><div className="header-actions">{supportPhone && <a className="quiet" href={`https://wa.me/${supportPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Help</a>}<button className="quiet" onClick={() => setScreen('orders')}>Orders</button><Menu salesman={Boolean(salesman)} onLogout={() => void (salesman ? signOut() : logOut())} onSetup={() => setScreen('setup')} onSignIn={salesman ? () => { window.location.href = salesLoginURL() } : undefined} callHref={supportPhone ? `tel:${supportPhone}` : undefined} /></div></header>
     {salesman && <div className="sales-bar"><span>Order for <b>{shop.storeName}</b><small>{[shop.customerName, shop.mobile].filter(Boolean).join(' · ')}</small></span><button onClick={() => setScreen('shops')}>Change shop</button></div>}
@@ -545,6 +548,66 @@ function App() {
     {screen === 'cart' && <Cart cart={cart} total={total} savings={savings} margin={marginTotal} onBack={() => setScreen('catalogue')} onSubmit={placeOrder} onClear={() => void saveCart([])} changeQuantity={changeQuantity} setQuantity={setQuantity} />}
     {screen === 'orders' && <Orders orders={shopOrders} supportPhone={supportPhone} pushAvailable={pushAvailable && !salesman} pushEnabled={pushEnabled} onEnablePush={() => void enableNotifications()} onShare={shareOrder} onBack={() => setScreen('catalogue')} onRepeat={repeatOrder} onChanged={loadHistory} />}
     {screen === 'catalogue' && <button className="cart-fab" onClick={() => setScreen('cart')}><span className="cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4L20.5 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span className="cart-copy"><b>View cart</b><small>{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'item' : 'items'}</small></span><strong>{money(total)}</strong><span className="cart-arrow" aria-hidden="true">›</span></button>}
+  </main>
+}
+
+// First-time setup: only what is needed to place an order. Everything else is
+// optional, tucked away, and can be filled in later from the menu.
+function QuickSetup({ salesman, shopTypes, onSave, onCancel }: {
+  salesman: boolean; shopTypes: ShopType[]
+  onSave: (shop: Shop, selectedIds: string[]) => Promise<void>
+  onCancel?: () => void
+}) {
+  const [shop, setShop] = useState<Shop>({ storeName: '', customerName: '', mobile: '', address: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [locationState, setLocationState] = useState<'idle' | 'loading' | 'saved' | 'error'>('idle')
+  const update = (changes: Partial<Shop>) => { setShop(current => ({ ...current, ...changes })); if (error) setError('') }
+  const shareLocation = () => {
+    if (!navigator.geolocation) { setLocationState('error'); return }
+    setLocationState('loading')
+    navigator.geolocation.getCurrentPosition(position => {
+      update({ latitude: position.coords.latitude, longitude: position.coords.longitude, locationAccuracy: Math.round(position.coords.accuracy) })
+      setLocationState('saved')
+    }, () => setLocationState('error'), { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 })
+  }
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (saving) return
+    const storeName = shop.storeName.trim()
+    const mobile = shop.mobile.trim()
+    if (!storeName) { setError('Enter the shop name.'); return }
+    if (mobile.replace(/\D/g, '').length < 10) { setError('Enter a 10-digit mobile number.'); return }
+    setSaving(true)
+    try {
+      await onSave({ ...shop, storeName, mobile, customerName: shop.customerName?.trim(), address: shop.address?.trim() }, [])
+    } catch { setError('Could not save on this device. Please try again.') }
+    finally { setSaving(false) }
+  }
+  return <main className="registration quick-setup">
+    <div className="brand"><span className="logo" aria-hidden="true">A</span>Asaan</div>
+    <h1>{salesman ? 'Add a shop' : 'Start ordering'}</h1>
+    <p>{salesman ? 'The shop you are visiting. Its orders are recorded as taken by you.' : 'Just your shop name and mobile number.'}</p>
+    <form onSubmit={submit} noValidate>
+      <label>Shop name<input value={shop.storeName} onChange={event => update({ storeName: event.target.value })} autoComplete="organization" autoCapitalize="words" enterKeyHint="next" required /></label>
+      <label>Mobile number<input type="tel" inputMode="numeric" value={shop.mobile} onChange={event => update({ mobile: event.target.value.replace(/[^\d+ ]/g, '') })} autoComplete="tel" maxLength={16} enterKeyHint="done" required /></label>
+      {shopTypes.length > 0 && <fieldset className="type-chips">
+        <legend>What kind of shop? <span className="setup-optional">Optional</span></legend>
+        <div>{shopTypes.map(type => <button type="button" key={type.id} aria-pressed={shop.shopType === type.id} className={shop.shopType === type.id ? 'selected' : undefined} onClick={() => update({ shopType: shop.shopType === type.id ? '' : type.id })}>{type.name}</button>)}</div>
+      </fieldset>}
+      <details className="more-details">
+        <summary>Add owner name, GSTIN or address <span className="setup-optional">Optional</span></summary>
+        <label>Owner name<input value={shop.customerName ?? ''} onChange={event => update({ customerName: event.target.value })} autoComplete="name" autoCapitalize="words" /></label>
+        <label>GSTIN<input value={shop.gstin ?? ''} onChange={event => update({ gstin: event.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '') })} maxLength={15} autoCapitalize="characters" /></label>
+        <label>Address<input value={shop.address ?? ''} onChange={event => update({ address: event.target.value })} autoComplete="street-address" /></label>
+        <section className="location-card"><div><b>Shop location</b><p>{locationState === 'saved' ? `Saved (accurate to about ${shop.locationAccuracy} m)` : locationState === 'error' ? 'Could not get the location. You can skip it.' : 'Helps with delivery.'}</p></div><button type="button" className="location-button" onClick={shareLocation} disabled={locationState === 'loading'}>{locationState === 'loading' ? 'Finding…' : locationState === 'saved' ? 'Update' : 'Share'}</button></section>
+      </details>
+      <div className="setup-actions">
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <button className="primary" disabled={saving}>{saving ? 'Saving…' : salesman ? 'Add shop' : 'Start ordering'}</button>
+        {onCancel && <button type="button" className="setup-skip" disabled={saving} onClick={onCancel}>Cancel</button>}
+      </div>
+    </form>
   </main>
 }
 
